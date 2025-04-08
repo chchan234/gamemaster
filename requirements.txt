@@ -1,7 +1,6 @@
 streamlit==1.32.0
 opencv-python==4.9.0.80
 pyautogui==0.9.54
-pygetwindow==0.0.9
-pywin32==306
+python-xlib==0.33
 numpy==1.26.4
 pillow==10.2.0 

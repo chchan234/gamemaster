@@ -1,5 +1,3 @@
-import pyautogui
-
 class WindowManager:
     def get_windows(self):
         """현재 실행 중인 모든 윈도우 목록을 반환합니다."""

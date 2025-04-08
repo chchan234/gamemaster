@@ -45,11 +45,22 @@ class AutoController:
     def execute_code_flow(self, image_recognizer, cheat_code):
         """치트 코드 입력 플로우를 실행합니다."""
         if self.simulation_mode:
-            print("코드 플로우 시뮬레이션 실행")
-            print("code 클릭")
-            print("code2 클릭")
-            print(f"치트 코드 입력: {cheat_code}")
-            print("code3 클릭")
-            print("code4 클릭")
-            time.sleep(1)
-            return True 
+            # 시뮬레이션 로그 메시지
+            log_messages = [
+                "코드 플로우 시뮬레이션 실행",
+                "치트 메뉴 진입 중...",
+                "code 버튼 클릭 (치트 메뉴 열기)",
+                "code2 버튼 클릭 (치트 입력창 선택)",
+                f"치트 코드 입력: {cheat_code}",
+                "code3 버튼 클릭 (확인)",
+                "code4 버튼 클릭 (적용)",
+                f"치트 코드 '{cheat_code}' 적용 완료!"
+            ]
+            
+            # 로그 출력
+            for message in log_messages:
+                print(message)
+                time.sleep(0.1)  # 로그 출력 간격 조정
+                
+            time.sleep(0.5)
+            return (True, log_messages)  # 로그 메시지도 반환

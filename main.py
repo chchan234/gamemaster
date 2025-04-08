@@ -1,5 +1,4 @@
 import streamlit as st
-import pygetwindow as gw
 import time
 from window_manager import WindowManager
 from image_recognition import ImageRecognizer

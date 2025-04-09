@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import json
 import os
+import sys
 import platform
 import pandas as pd
 from window_manager import WindowManager
@@ -630,7 +631,24 @@ def main():
     # 게임 창이 아직 확정되지 않은 경우, 선택 UI 표시
     if not st.session_state.window_confirmed:
         if window_manager.simulation_mode:
-            if platform.system() == 'Linux':
+            if platform.system() == 'Windows':
+                st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다. 실제 게임 창을 선택하려면:")
+                st.sidebar.code("pip install pygetwindow==0.0.9", language="bash")
+                st.sidebar.info("명령어를 실행한 후 프로그램을 다시 시작하세요.")
+                
+                # 직접 설치 버튼 옵션
+                if st.sidebar.button("pygetwindow 설치 시도", help="pygetwindow 패키지를 설치하여 실제 윈도우 선택 기능을 활성화합니다."):
+                    try:
+                        import subprocess
+                        subprocess.call([sys.executable, "-m", "pip", "install", "pygetwindow==0.0.9"])
+                        st.sidebar.success("설치가 완료되었습니다. 프로그램을 다시 시작하세요.")
+                        import pygetwindow as gw
+                        window_manager.simulation_mode = False
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"설치 오류: {str(e)}")
+                        st.sidebar.info("수동으로 명령어를 실행해주세요.")
+            elif platform.system() == 'Linux':
                 st.sidebar.warning("리눅스 환경에서는 시뮬레이션 모드로만 실행됩니다. 실제 게임 창이 선택되지 않습니다.")
             else:
                 st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")

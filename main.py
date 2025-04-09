@@ -1,8 +1,219 @@
 import streamlit as st
 import time
+import json
+import os
+import platform
+import pandas as pd
 from window_manager import WindowManager
 from image_recognition import ImageRecognizer
 from auto_controller import AutoController
+from item_database import filter_items, search_items_by_name, JOB_LIST, GRADE_LIST, PART_LIST, GRADE_COLORS, CHARACTER_LIST
+
+def load_data(filename):
+    """
+    Excel 파일에서 데이터를 로드하는 함수
+    지원 형식: Excel(xlsx, xls)
+    파일이 없으면 빈 리스트 반환
+    """
+    try:
+        # Excel 파일 경로로 변환 (json 파일이름이 들어오면 엑셀 파일 경로로 변환)
+        base_filename = os.path.basename(filename)  # 파일명만 추출
+        name_without_ext, ext = os.path.splitext(base_filename)
+        
+        if ext.lower() == '.json':
+            # data/items.json -> excel_data/items.xlsx
+            excel_filename = os.path.join('excel_data', name_without_ext + '.xlsx')
+        else:
+            excel_filename = filename
+            
+        # 파일 존재 여부 확인
+        if not os.path.exists(excel_filename):
+            # 최초 실행 시 샘플 Excel 파일 생성
+            if name_without_ext in ['asters', 'avatars', 'items', 'spirits', 'vehicles', 'weapon_souls']:
+                st.info(f"'{excel_filename}' 파일이 없습니다. 샘플 데이터를 생성합니다.")
+                
+                # 샘플 데이터 생성
+                sample_data = []
+                
+                if name_without_ext == 'asters':
+                    sample_data = [
+                        {"id": "111001", "name": "일반 선봉의 아스터1", "type": "아스터", "grade": "COMMON", "방향": "1"},
+                        {"id": "112001", "name": "고급 선봉의 아스터1", "type": "아스터", "grade": "ADVANCE", "방향": "2"},
+                        {"id": "113001", "name": "희귀 선봉의 아스터1", "type": "아스터", "grade": "RARE", "방향": "3"}
+                    ]
+                elif name_without_ext == 'avatars':
+                    sample_data = [
+                        {"id": "110018000", "name": "가벼운 사냥복", "type": "아바타", "grade": "COMMON", "job": "헌터"},
+                        {"id": "110018001", "name": "추격자의 사냥복", "type": "아바타", "grade": "COMMON", "job": "헌터"},
+                        {"id": "210018000", "name": "마법사의 로브", "type": "아바타", "grade": "RARE", "job": "마법사"}
+                    ]
+                else:
+                    sample_data = [
+                        {"id": "000001", "name": "샘플 아이템", "type": "기타", "grade": "COMMON", "job": "공용"},
+                        {"id": "000002", "name": "샘플 아이템2", "type": "기타", "grade": "COMMON", "job": "공용"}
+                    ]
+                
+                # 샘플 데이터 저장
+                df = pd.DataFrame(sample_data)
+                
+                # 디렉토리 생성
+                os.makedirs(os.path.dirname(excel_filename), exist_ok=True)
+                
+                # Excel 파일로 저장
+                df.to_excel(excel_filename, index=False)
+                st.success(f"'{excel_filename}' 파일이 생성되었습니다. 이 파일을 직접 편집하여 데이터를 관리할 수 있습니다.")
+            else:
+                st.warning(f"파일을 찾을 수 없습니다: {excel_filename}")
+                return []
+            
+        # Excel 파일 처리
+        df = pd.read_excel(excel_filename)
+        
+        # 빈 값 처리
+        df = df.fillna('')
+        
+        # DataFrame을 딕셔너리 리스트로 변환
+        data = df.to_dict('records')
+        
+        # 디버그: 아이템 타입 값 확인 (로그로 출력)
+        if data and len(data) > 0 and excel_filename.endswith('Items.xlsx'):
+            print("Items.xlsx 파일 컬럼 확인:")
+            print(list(data[0].keys()))
+            
+            # 타입 값 추출 (정확한 키 확인)
+            type_keys = ['Type', 'type', 'TYPE', 'item_type', 'ItemType']
+            found_key = None
+            
+            # 어떤 키가 있는지 확인
+            for key in type_keys:
+                if key in data[0]:
+                    found_key = key
+                    break
+            
+            if found_key:
+                print(f"Items.xlsx 파일에서 타입 값은 '{found_key}' 키에 저장되어 있습니다.")
+                
+                # 해당 키의 모든 고유 값 추출
+                type_values = set()
+                for item in data:
+                    type_value = item.get(found_key, '')
+                    if type_value and str(type_value).strip():
+                        type_values.add(str(type_value).strip())
+                
+                print(f"Items.xlsx 파일 {found_key} 값 목록:")
+                print(sorted(list(type_values)))
+            else:
+                print("Items.xlsx 파일에 타입 관련 키를 찾을 수 없습니다.")
+                
+                # 샘플 아이템 몇 개 확인
+                print("샘플 아이템 데이터:")
+                for i, item in enumerate(data[:3]):
+                    print(f"아이템 {i+1}:", item)
+            
+        return data
+            
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류 발생: {str(e)}")
+        return []
+
+# 이전 함수 호환성 유지
+def load_data_from_json(filename):
+    """
+    기존 JSON 파일명을 받아 Excel 파일을 로드하는 함수 (하위 호환성 유지)
+    """
+    return load_data(filename)
+
+def filter_data_with_rag(data, filters):
+    """
+    Excel 데이터를 필터링하는 함수
+    - 사용자 정의 필터 기준에 따라 Excel에서 로드된 데이터 필터링
+    - 여러 필드에서 값을 검색할 수 있도록 지원 (Name이나 char에서 직업 검색)
+    """
+    if not data:
+        return []
+    
+    # 원본 데이터 유지
+    filtered_data = data
+    
+    # 엑셀 파일 컬럼명 매핑 (실제 엑셀 컬럼명 확인 결과 기반)
+    excel_column_mapping = {
+        'grade': 'Grade',     # 우리 코드: 엑셀 컬럼명
+        'name': 'Name',
+        'id': 'Id',
+        'job': ['char', 'Name'],  # job 필드는 char 또는 Name 컬럼에서 검색
+        'type': 'Type',        # 아이템 타입 필드
+        '방향': 'Direction'
+    }
+    
+    # 필터 적용
+    for key, value in filters.items():
+        if value and value != "모두":
+            new_filtered = []
+            
+            # 등급 필터링 (Grade 컬럼)
+            if key.lower() == 'grade':
+                excel_key = excel_column_mapping.get(key, key)
+                for item in filtered_data:
+                    if excel_key in item and str(item[excel_key]).lower() == str(value).lower():
+                        new_filtered.append(item)
+                        
+            # 직업 필터링 (char 컬럼에서만 검색)
+            elif key.lower() == 'job':
+                for item in filtered_data:
+                    # char 필드에서 검색 (부분 일치)
+                    if 'char' in item and str(value).lower() in str(item['char']).lower():
+                        new_filtered.append(item)
+                        continue
+                    
+                    # 원래 job 필드 검색 (하위 호환성)
+                    if 'job' in item and str(item['job']).lower() == str(value).lower():
+                        new_filtered.append(item)
+                        continue
+            
+            # 타입 필터링 처리 (Type 또는 type 필드)
+            elif key.lower() == 'type':
+                # 모든 가능한 타입 필드 키
+                type_keys = ['Type', 'type', 'TYPE', 'item_type', 'ItemType']
+                
+                for item in filtered_data:
+                    # 모든 가능한 타입 키 확인
+                    for type_key in type_keys:
+                        if type_key in item:
+                            type_value = str(item[type_key]).lower()
+                            value_lower = str(value).lower()
+                            
+                            # 정확히 일치하거나 부분 일치
+                            if type_value == value_lower or value_lower in type_value:
+                                new_filtered.append(item)
+                                break  # 타입 키 루프 종료
+                    
+                    # 이미 추가된 아이템은 건너뛰기
+                    if item in new_filtered:
+                        continue
+            
+            # 기타 필터 (방향 등)
+            else:
+                excel_key = excel_column_mapping.get(key, key)
+                if isinstance(excel_key, list):
+                    # 여러 필드에서 검색
+                    for item in filtered_data:
+                        for field in excel_key:
+                            if field in item and str(item[field]).lower() == str(value).lower():
+                                new_filtered.append(item)
+                                break
+                else:
+                    # 단일 필드에서 검색
+                    for item in filtered_data:
+                        if excel_key in item and str(item[excel_key]).lower() == str(value).lower():
+                            new_filtered.append(item)
+            
+            filtered_data = new_filtered
+            
+            # 결과가 없으면 디버그 메시지 표시
+            if not filtered_data:
+                print(f"필터 '{key}'='{value}'로 매칭된 항목이 없습니다.")
+    
+    return filtered_data
 
 def main():
     st.title("게임 치트 자동화 프로그램")
@@ -49,9 +260,10 @@ def main():
             "아바타 아이템 생성",
             "탈것 생성",
             "정령 생성",
+            "무기소울 생성",
+            "아스터 생성",
             "정령 즐겨찾기",
             "정령 즐겨찾기 해제",
-            "정령, 탈것, 무기소울, 아바타, 아스터 생성",
             "강화된 아이템 생성",
             "귀속 여부에 따른 아이템 생성",
             "아이템 보상 드랍 FX Trail 속도",
@@ -231,10 +443,15 @@ def main():
             "예시": "GT.SC SPIRIT_BOOKMARK_DELETE 100002",
             "정보": ""
         },
-        "정령, 탈것, 무기소울, 아바타, 아스터 생성": {
-            "코드": "GT.SC CREATE_{아이템 타입} {생성할 아이템 ID} {생성할 개수}",
-            "예시": "GT.SC CREATE_AVATAR 900090001 100",
-            "정보": "{생성할 개수} 생략시 1개만 생성"
+        "무기소울 생성": {
+            "코드": "GT.SC CREATE_WEAPONSOUL {WEAPONSOUL_ID}",
+            "예시": "GT.SC CREATE_WEAPONSOUL 1000",
+            "정보": ""
+        },
+        "아스터 생성": {
+            "코드": "GT.SC CREATE_ASTER {ASTER_ID}",
+            "예시": "GT.SC CREATE_ASTER 1000",
+            "정보": ""
         },
         "강화된 아이템 생성": {
             "코드": "GT.SC CREATE_ITEM_WITH_LEVEL {아이템ID} {개수} {레벨}",
@@ -406,22 +623,49 @@ def main():
     # 윈도우 선택을 사이드바로 이동
     st.sidebar.subheader("게임 창 선택")
     
+    # 운영체제 정보 표시
+    system_type = platform.system()
+    st.sidebar.caption(f"현재 운영체제: {system_type}")
+    
     # 게임 창이 아직 확정되지 않은 경우, 선택 UI 표시
     if not st.session_state.window_confirmed:
-        # 선택 상자와 확인 버튼을 나란히 배치하기 위한 열 생성
-        window_col1, window_col2 = st.sidebar.columns([3, 1])
+        if window_manager.simulation_mode:
+            st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
         
-        # 첫 번째 열에 선택 상자 배치
-        selected_window = window_col1.selectbox(
+        # 창 선택 UI
+        selected_window = st.sidebar.selectbox(
             "게임 창을 선택하세요:",
             windows
         )
         
-        # 두 번째 열에 확인 버튼 배치
-        if window_col2.button("확인", key="confirm_window"):
-            st.session_state.window_confirmed = True
-            st.session_state.selected_window = selected_window
-            st.rerun()  # UI 업데이트를 위해 페이지 리로드
+        # 직접 입력 옵션 추가
+        use_custom_window = st.sidebar.checkbox("직접 창 이름 입력하기")
+        
+        if use_custom_window:
+            custom_window = st.sidebar.text_input(
+                "창 이름을 직접 입력하세요:", 
+                placeholder="예: 게임 클라이언트", 
+                value=selected_window if selected_window else ""
+            )
+            if custom_window:
+                selected_window = custom_window
+        
+        # 확인 버튼
+        if st.sidebar.button("창 선택 확인", key="confirm_window"):
+            if not selected_window:
+                st.sidebar.error("창을 선택하거나 이름을 입력해주세요.")
+            else:
+                st.session_state.window_confirmed = True
+                st.session_state.selected_window = selected_window
+                
+                # 창 활성화 시도 (시뮬레이션 모드가 아닐 때만)
+                if not window_manager.simulation_mode:
+                    if window_manager.activate_window(selected_window):
+                        st.sidebar.success(f"'{selected_window}' 창을 활성화했습니다.")
+                    else:
+                        st.sidebar.warning(f"'{selected_window}' 창 활성화에 실패했습니다. 수동으로 창을 선택해주세요.")
+                
+                st.rerun()  # UI 업데이트를 위해 페이지 리로드
     else:
         # 이미 확정된 게임 창 정보 표시
         st.sidebar.success(f"게임 창: '{st.session_state.selected_window}' 적용됨")
@@ -481,13 +725,319 @@ def main():
             additional_params["MOB_ID"] = mob_id
             
         elif selected_cheat == "아이템 생성":
-            item_id = st.text_input("아이템 ID를 입력하세요:", "900090001")
-            item_cnt = st.text_input("생성할 개수를 입력하세요:", "100")
+            # 장비 검색 인터페이스 추가
+            search_method = st.radio("아이템 생성 방법 선택:", ["필터", "장비 검색", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                item_id = st.text_input("아이템 ID를 입력하세요:", "900090001")
+            elif search_method == "장비 검색":
+                # 검색 인터페이스
+                st.subheader("아이템 검색", divider=True)
+                
+                # 검색입력과 버튼 배치
+                search_col1, search_col2 = st.columns([3, 1])
+                with search_col1:
+                    search_query = st.text_input("이름으로 아이템 검색 (키워드 입력):", "")
+                with search_col2:
+                    search_button = st.button("검색")
+                
+                # 검색 결과 처리
+                search_results = []
+                if search_query and (search_button or search_query.strip() != ""):
+                    search_results = search_items_by_name(search_query)
+                    if search_results:
+                        st.success(f"'{search_query}' 검색 결과: {len(search_results)}개 아이템 발견")
+                    else:
+                        st.warning(f"'{search_query}' 검색 결과가 없습니다.")
+                
+                # 아이템 표시
+                display_items = []
+                if search_query and (search_button or search_query.strip() != "") and search_results:
+                    display_items = search_results
+                    st.subheader("검색 결과")
+                else:
+                    # 기본 아이템 몇 개 표시
+                    display_items = filter_items("모두", "모두", "모두")[:30]
+                    st.subheader("아이템 목록")
+                
+                if len(display_items) == 0:
+                    st.warning("표시할 아이템이 없습니다.")
+                    st.info("다른 검색어를 입력하거나 필터 조건을 변경해보세요.")
+                
+                if display_items:
+                    # 등급별 색상 표시를 위한 함수
+                    def format_item(item):
+                        # Excel 컬럼 매핑: Grade -> grade, Name -> name, Id -> id
+                        grade = item.get('Grade', item.get('grade', 'N/A'))
+                        name = item.get('Name', item.get('name', 'Unknown'))
+                        id_value = item.get('Id', item.get('id', 'N/A'))
+                        job_info = item.get('job', '공용')
+                        job_info = job_info if job_info != "공용" else "공용"
+                        return f"[{grade}] {name} - {job_info} ({id_value})"
+                    
+                    # 아이템 선택 UI
+                    selected_item = st.selectbox(
+                        "아이템 선택:",
+                        options=display_items,
+                        format_func=format_item
+                    )
+                    
+                    item_id = selected_item.get("Id", selected_item.get("id", ""))
+                    
+                    # 선택된 아이템 정보 표시
+                    grade = selected_item.get('Grade', selected_item.get('grade', 'COMMON'))
+                    grade_color = GRADE_COLORS.get(grade, "gray")
+                    
+                    # 엑셀 컬럼 매핑
+                    name = selected_item.get('Name', selected_item.get('name', 'Unknown'))
+                    id_value = selected_item.get('Id', selected_item.get('id', 'N/A'))
+                    job = selected_item.get('job', '공용')
+                    part = selected_item.get('part', 'N/A')
+                    
+                    st.markdown(f"""
+                    <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                        <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                        <p><strong>아이템 ID:</strong> {id_value}</p>
+                        <p><strong>등급:</strong> {grade}</p>
+                        <p><strong>직업:</strong> {job}</p>
+                        <p><strong>부위:</strong> {part}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning("조건에 맞는 아이템이 없습니다.")
+                    item_id = ""
+            else:  # 필터
+                st.subheader("아이템 필터", divider=True)
+                
+                # JSON 데이터 로드
+                items_data = load_data_from_json("data/items.json")
+                
+                if not items_data:
+                    st.warning("아이템 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    item_id = ""
+                else:
+                    # 필터링 인터페이스
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"])
+                    
+                    with col2:
+                        # Excel 파일(Items.xlsx)에서 타입 목록 추출
+                        type_options = ["모두"]
+                        
+                        # items_data에서 Type 키 확인
+                        type_keys = ['Type', 'type', 'TYPE', 'item_type', 'ItemType']
+                        found_key = None
+                        
+                        # Items.xlsx 엑셀 파일 직접 로딩하여 Type 값 추출
+                        excel_items = load_data("excel_data/Items.xlsx")
+                        
+                        if excel_items and len(excel_items) > 0:
+                            # 어떤 키가 있는지 확인
+                            for key in type_keys:
+                                if key in excel_items[0]:
+                                    found_key = key
+                                    break
+                            
+                            # 해당 키의 모든 고유 값 추출
+                            if found_key:
+                                type_values = set()
+                                for item in excel_items:
+                                    type_value = item.get(found_key, '')
+                                    if type_value and str(type_value).strip():
+                                        type_values.add(str(type_value).strip())
+                                
+                                # 타입 옵션 추가
+                                type_options.extend(sorted(list(type_values)))
+                            else:
+                                # 기본 타입 옵션
+                                type_options.extend(["무기", "방어구", "장신구", "소비", "스킬북", "상자", "제작서", "재료", "퀘스트", "기타"])
+                        else:
+                            # 엑셀 파일 로드 실패 시 JSON 데이터에서 추출 시도 (기존 방식 유지)
+                            if items_data and len(items_data) > 0:
+                                for key in type_keys:
+                                    if key in items_data[0]:
+                                        found_key = key
+                                        break
+                            
+                            if found_key:
+                                type_values = set()
+                                for item in items_data:
+                                    type_value = item.get(found_key, '')
+                                    if type_value and str(type_value).strip():
+                                        type_values.add(str(type_value).strip())
+                                
+                                # 타입 옵션 추가
+                                type_options.extend(sorted(list(type_values)))
+                            else:
+                                # 기본 타입 옵션
+                                type_options.extend(["무기", "방어구", "장신구", "소비", "스킬북", "상자", "제작서", "재료", "퀘스트", "기타"])
+                        
+                        type_filter = st.selectbox("타입 선택:", type_options)
+                    
+                    # 필터 적용
+                    filters = {
+                        "grade": grade_filter,
+                        "type": type_filter
+                    }
+                    
+                    # RAG 시스템으로 필터링
+                    filtered_items = filter_data_with_rag(items_data, filters)
+                    
+                    if filtered_items:
+                        st.success(f"필터링 결과: {len(filtered_items)}개 아이템")
+                        
+                        # 아이템 선택 UI
+                        def format_item(item):
+                            # Excel 컬럼 매핑: Grade -> grade, Name -> name, Id -> id
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            job_info = item.get('char', item.get('job', '공용'))
+                            job_info = job_info if job_info != "공용" else "공용"
+                            item_type = item.get('Type', item.get('type', item.get('TYPE', '')))
+                            
+                            # 타입 정보가 있을 경우 표시
+                            if item_type:
+                                return f"[{grade}] {name} - {job_info} - {item_type} ({id_value})"
+                            else:
+                                return f"[{grade}] {name} - {job_info} ({id_value})"
+                        
+                        selected_item = st.selectbox(
+                            "아이템 선택:",
+                            options=filtered_items,
+                            format_func=format_item
+                        )
+                        
+                        item_id = selected_item.get("Id", selected_item.get("id", ""))
+                        
+                        # 선택된 아이템 정보 표시
+                        grade = selected_item.get('Grade', selected_item.get('grade', 'COMMON'))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼 매핑
+                        name = selected_item.get('Name', selected_item.get('name', 'Unknown'))
+                        id_value = selected_item.get('Id', selected_item.get('id', 'N/A'))
+                        job = selected_item.get('char', selected_item.get('job', '공용'))
+                        item_type = selected_item.get('Type', selected_item.get('type', selected_item.get('TYPE', 'N/A')))
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>아이템 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                            <p><strong>직업:</strong> {job}</p>
+                            <p><strong>타입:</strong> {item_type}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 아이템이 없습니다.")
+                        item_id = ""
+            
+            # 개수 입력은 항상 표시
+            item_cnt = st.text_input("생성할 개수를 입력하세요:", "1")
             additional_params["ITEM_ID"] = item_id
             additional_params["ITEM_CNT"] = item_cnt
             
         elif selected_cheat == "아바타 아이템 생성":
-            avatar_id = st.text_input("아바타 ID를 입력하세요:", "900090001")
+            search_method = st.radio("아바타 생성 방법 선택:", ["필터", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                avatar_id = st.text_input("아바타 ID를 입력하세요:", "900090001")
+            else:  # 필터
+                st.subheader("아바타 필터", divider=True)
+                
+                # JSON 데이터 로드
+                avatars_data = load_data_from_json("data/avatars.json")
+                
+                if not avatars_data:
+                    st.warning("아바타 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    avatar_id = ""
+                else:
+                    # 필터링 인터페이스 - 2개 컬럼
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"], key="avatar_grade")
+                    
+                    with col2:
+                        job_filter = st.selectbox("직업 선택:", JOB_LIST, key="avatar_job")
+                    
+                    # 필터 적용
+                    filters = {
+                        "grade": grade_filter,
+                        "job": job_filter
+                    }
+                    
+                    # RAG 시스템으로 필터링
+                    filtered_avatars = filter_data_with_rag(avatars_data, filters)
+                    
+                    # 검색 기능 추가
+                    search_col1, search_col2 = st.columns([3, 1])
+                    with search_col1:
+                        search_query = st.text_input("이름으로 아바타 검색 (키워드 입력):", "", key="avatar_search")
+                    with search_col2:
+                        search_button = st.button("검색", key="avatar_search_btn")
+                    
+                    # 검색 결과 처리
+                    if search_query and (search_button or search_query.strip() != ""):
+                        search_results = []
+                        query = search_query.lower()
+                        for avatar in filtered_avatars:
+                            if query in avatar.get("name", "").lower():
+                                search_results.append(avatar)
+                        
+                        if search_results:
+                            filtered_avatars = search_results
+                            st.success(f"'{search_query}' 검색 결과: {len(filtered_avatars)}개 아바타 발견")
+                        else:
+                            st.warning(f"'{search_query}' 검색 결과가 없습니다.")
+                    
+                    if filtered_avatars:
+                        st.success(f"필터링 결과: {len(filtered_avatars)}개 아바타")
+                        
+                        # 아바타 선택 UI
+                        def format_avatar(item):
+                            # 엑셀 파일과 매핑: Grade -> grade, Name -> name, Id -> id, char -> job
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            job = item.get('char', item.get('job', 'N/A'))
+                            
+                            return f"[{grade}] {name} - {job} ({id_value})"
+                        
+                        selected_avatar = st.selectbox(
+                            "아바타 선택:",
+                            options=filtered_avatars,
+                            format_func=format_avatar,
+                            key="avatar_select"
+                        )
+                        
+                        # 엑셀 파일과 매핑: Id -> id
+                        avatar_id = selected_avatar.get("Id", selected_avatar.get("id", ""))
+                        
+                        # 선택된 아바타 정보 표시
+                        grade = selected_avatar.get("Grade", selected_avatar.get("grade", "COMMON"))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼명에 맞게 매핑
+                        name = selected_avatar.get('Name', selected_avatar.get('name', 'Unknown'))
+                        id_value = selected_avatar.get('Id', selected_avatar.get('id', 'N/A'))
+                        job = selected_avatar.get('char', selected_avatar.get('job', 'N/A'))
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>아바타 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                            <p><strong>직업/캐릭터:</strong> {job}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 아바타가 없습니다.")
+                        avatar_id = ""
+            
             # 코드 패턴 수정 (GT.CREATE_AVATAR 뒤에 ID 추가)
             cheat_codes[selected_cheat] = "GT.CREATE_AVATAR {AVATAR_ID}"
             additional_params["AVATAR_ID"] = avatar_id
@@ -570,11 +1120,140 @@ def main():
             additional_params["VALUE"] = value
             
         elif selected_cheat == "탈것 생성":
-            vehicle_id = st.text_input("탈것 ID:", "10001")
+            search_method = st.radio("탈것 생성 방법 선택:", ["필터", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                vehicle_id = st.text_input("탈것 ID:", "10001")
+            else:  # 필터
+                st.subheader("탈것 필터", divider=True)
+                
+                # JSON 데이터 로드
+                vehicles_data = load_data_from_json("data/vehicles.json")
+                
+                if not vehicles_data:
+                    st.warning("탈것 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    vehicle_id = ""
+                else:
+                    # 필터링 인터페이스
+                    grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"])
+                    
+                    # 필터 적용
+                    filters = {
+                        "grade": grade_filter
+                    }
+                    
+                    # RAG 시스템으로 필터링
+                    filtered_vehicles = filter_data_with_rag(vehicles_data, filters)
+                    
+                    if filtered_vehicles:
+                        st.success(f"필터링 결과: {len(filtered_vehicles)}개 탈것")
+                        
+                        # 탈것 선택 UI
+                        def format_vehicle(item):
+                            # 엑셀 파일과 매핑: Grade -> grade, Name -> name, Id -> id
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            return f"[{grade}] {name} ({id_value})"
+                        
+                        selected_vehicle = st.selectbox(
+                            "탈것 선택:",
+                            options=filtered_vehicles,
+                            format_func=format_vehicle
+                        )
+                        
+                        vehicle_id = selected_vehicle.get("Id", selected_vehicle.get("id", ""))
+                        
+                        # 선택된 탈것 정보 표시
+                        grade = selected_vehicle.get('Grade', selected_vehicle.get('grade', 'COMMON'))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼 매핑
+                        name = selected_vehicle.get('Name', selected_vehicle.get('name', 'Unknown'))
+                        id_value = selected_vehicle.get('Id', selected_vehicle.get('id', 'N/A'))
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>탈것 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 탈것이 없습니다.")
+                        vehicle_id = ""
+            
             additional_params["VEHICLE_ID"] = vehicle_id
             
         elif selected_cheat == "정령 생성":
-            spirit_id = st.text_input("정령 ID:", "10000")
+            search_method = st.radio("정령 생성 방법 선택:", ["필터", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                spirit_id = st.text_input("정령 ID:", "10000")
+            else:  # 필터
+                st.subheader("정령 필터", divider=True)
+                
+                # JSON 데이터 로드
+                spirits_data = load_data_from_json("data/spirits.json")
+                
+                if not spirits_data:
+                    st.warning("정령 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    spirit_id = ""
+                else:
+                    # 필터링 인터페이스
+                    col1, col2 = st.columns(2)
+                    
+                    # 필터링 인터페이스
+                    grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"])
+                    
+                    # 필터 적용
+                    filters = {
+                        "grade": grade_filter
+                    }
+                    
+                    # RAG 시스템으로 필터링
+                    filtered_spirits = filter_data_with_rag(spirits_data, filters)
+                    
+                    if filtered_spirits:
+                        st.success(f"필터링 결과: {len(filtered_spirits)}개 정령")
+                        
+                        # 정령 선택 UI
+                        def format_spirit(item):
+                            # 엑셀 파일과 매핑: Grade, Name, Id
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            return f"[{grade}] {name} ({id_value})"
+                        
+                        selected_spirit = st.selectbox(
+                            "정령 선택:",
+                            options=filtered_spirits,
+                            format_func=format_spirit
+                        )
+                        
+                        spirit_id = selected_spirit.get("Id", selected_spirit.get("id", ""))
+                        
+                        # 선택된 정령 정보 표시
+                        grade = selected_spirit.get('Grade', selected_spirit.get('grade', 'COMMON'))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼 매핑
+                        name = selected_spirit.get('Name', selected_spirit.get('name', 'Unknown'))
+                        id_value = selected_spirit.get('Id', selected_spirit.get('id', 'N/A'))
+                        element = selected_spirit.get('Element', selected_spirit.get('element', 'N/A'))
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>정령 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                            <p><strong>원소:</strong> {element}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 정령이 없습니다.")
+                        spirit_id = ""
+            
             additional_params["SPIRIT_ID"] = spirit_id
             
         elif selected_cheat == "정령 즐겨찾기" or selected_cheat == "정령 즐겨찾기 해제":
@@ -649,26 +1328,433 @@ def main():
             additional_params["재화타입"] = currency_type
             additional_params["수량"] = amount
             
-        elif selected_cheat == "정령, 탈것, 무기소울, 아바타, 아스터 생성":
-            item_type = st.selectbox("아이템 타입:", ["SPIRIT", "VEHICLE", "WEAPONSOUL", "AVATAR", "ASTER"])
-            item_id = st.text_input("아이템 ID:", "900090001")
-            count = st.text_input("개수:", "100")
-            additional_params["아이템 타입"] = item_type
-            additional_params["생성할 아이템 ID"] = item_id
-            additional_params["생성할 개수"] = count
+        elif selected_cheat == "무기소울 생성":
+            search_method = st.radio("무기소울 생성 방법 선택:", ["필터", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                weapon_soul_id = st.text_input("무기소울 ID:", "10000")
+            else:  # 필터
+                st.subheader("무기소울 필터", divider=True)
+                
+                # JSON 데이터 로드
+                weapon_souls_data = load_data_from_json("data/weapon_souls.json")
+                
+                if not weapon_souls_data:
+                    st.warning("무기소울 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    weapon_soul_id = ""
+                else:
+                    # 필터링 인터페이스
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"])
+                    
+                    with col2:
+                        job_filter = st.selectbox("직업 선택:", ["모두", "헌터", "어쌔신", "마법사", "치유사", "기사", "궁수", "창병", "마검사", "검투사", "도적", "알케미스트", "공용"])
+                    
+                    # 필터 적용
+                    filters = {
+                        "grade": grade_filter,
+                        "job": job_filter
+                    }
+                    
+                    # RAG 시스템으로 필터링
+                    filtered_weapon_souls = filter_data_with_rag(weapon_souls_data, filters)
+                    
+                    if filtered_weapon_souls:
+                        st.success(f"필터링 결과: {len(filtered_weapon_souls)}개 무기소울")
+                        
+                        # 무기소울 선택 UI
+                        def format_weapon_soul(item):
+                            # 엑셀 파일과 매핑: Grade -> grade, Name -> name, Id -> id, Job/char -> job
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            job = item.get('char', item.get('job', 'N/A'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            return f"[{grade}] {name} - {job} ({id_value})"
+                        
+                        selected_weapon_soul = st.selectbox(
+                            "무기소울 선택:",
+                            options=filtered_weapon_souls,
+                            format_func=format_weapon_soul
+                        )
+                        
+                        weapon_soul_id = selected_weapon_soul.get("Id", selected_weapon_soul.get("id", ""))
+                        
+                        # 선택된 무기소울 정보 표시
+                        grade = selected_weapon_soul.get('Grade', selected_weapon_soul.get('grade', 'COMMON'))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼 매핑
+                        name = selected_weapon_soul.get('Name', selected_weapon_soul.get('name', 'Unknown'))
+                        id_value = selected_weapon_soul.get('Id', selected_weapon_soul.get('id', 'N/A'))
+                        job = selected_weapon_soul.get('char', selected_weapon_soul.get('job', 'N/A'))
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>무기소울 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                            <p><strong>직업:</strong> {job}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 무기소울이 없습니다.")
+                        weapon_soul_id = ""
+            
+            additional_params["WEAPONSOUL_ID"] = weapon_soul_id
+            
+        elif selected_cheat == "아스터 생성":
+            search_method = st.radio("아스터 생성 방법 선택:", ["필터", "직접 ID 입력"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                aster_id = st.text_input("아스터 ID:", "10000")
+            else:  # 필터
+                st.subheader("아스터 필터", divider=True)
+                
+                # JSON 데이터 로드
+                asters_data = load_data_from_json("data/asters.json")
+                
+                if not asters_data:
+                    st.warning("아스터 데이터를 불러올 수 없습니다. JSON 파일을 확인해주세요.")
+                    aster_id = ""
+                else:
+                    # 필터링 인터페이스
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        grade_filter = st.selectbox("등급 선택:", ["모두", "COMMON", "ADVANCE", "RARE", "EPIC", "LEGEND", "MYTH"])
+                    
+                    with col2:
+                        direction_filter = st.selectbox("방향 선택:", ["모두", "1", "2", "3", "4", "5", "6"])
+                    
+                    # 등급 필터 적용 (RAG 시스템)
+                    filters = {
+                        "grade": grade_filter
+                    }
+                    
+                    # 먼저 등급 필터링 적용
+                    filtered_asters = filter_data_with_rag(asters_data, filters)
+                    
+                    # 방향 필터링을 수동으로 처리 (이름의 마지막 숫자 기준)
+                    if direction_filter and direction_filter != "모두":
+                        # 방향 필터 수동 적용 (이름 마지막 숫자)
+                        filtered_by_direction = []
+                        for item in filtered_asters:
+                            name = item.get('Name', item.get('name', ''))
+                            if name and len(name) > 0 and name[-1].isdigit() and name[-1] == direction_filter:
+                                filtered_by_direction.append(item)
+                        filtered_asters = filtered_by_direction
+                    
+                    if filtered_asters:
+                        st.success(f"필터링 결과: {len(filtered_asters)}개 아스터")
+                        
+                        # 아스터 선택 UI
+                        def format_aster(item):
+                            # 엑셀 컬럼 매핑: Grade, Name, Id
+                            grade = item.get('Grade', item.get('grade', 'N/A'))
+                            name = item.get('Name', item.get('name', 'Unknown'))
+                            id_value = item.get('Id', item.get('id', 'N/A'))
+                            
+                            # 이름에서 방향 추출 (아스터1, 아스터2, ... 에서 마지막 숫자)
+                            direction = ""
+                            if name:
+                                # 이름의 마지막 문자가 숫자인지 확인
+                                if name[-1].isdigit():
+                                    direction = name[-1]
+                                    
+                            return f"[{grade}] {name} - 방향: {direction} ({id_value})"
+                        
+                        selected_aster = st.selectbox(
+                            "아스터 선택:",
+                            options=filtered_asters,
+                            format_func=format_aster,
+                            key="aster_select"
+                        )
+                        
+                        aster_id = selected_aster.get("Id", selected_aster.get("id", ""))
+                        
+                        # 선택된 아스터 정보 표시
+                        grade = selected_aster.get('Grade', selected_aster.get('grade', 'COMMON'))
+                        grade_color = GRADE_COLORS.get(grade, "gray")
+                        
+                        # 엑셀 컬럼 매핑
+                        name = selected_aster.get('Name', selected_aster.get('name', 'Unknown'))
+                        id_value = selected_aster.get('Id', selected_aster.get('id', 'N/A'))
+                        
+                        # 이름에서 방향 추출
+                        direction = ""
+                        if name and name[-1].isdigit():
+                            direction = name[-1]
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h4 style="color: {grade_color}; margin-top: 0;">{name}</h4>
+                            <p><strong>아스터 ID:</strong> {id_value}</p>
+                            <p><strong>등급:</strong> {grade}</p>
+                            <p><strong>방향:</strong> {direction}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.warning("조건에 맞는 아스터가 없습니다.")
+                        aster_id = ""
+            
+            additional_params["ASTER_ID"] = aster_id
             
         elif selected_cheat == "강화된 아이템 생성":
-            item_id = st.text_input("아이템 ID:", "903003000")
-            count = st.text_input("개수:", "1")
-            level = st.text_input("레벨:", "20")
+            # 아이템 검색 인터페이스 추가
+            search_method = st.radio("아이템 선택 방법:", ["직접 ID 입력", "아이템 검색"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                item_id = st.text_input("아이템 ID:", "903003000")
+            else:
+                # 검색과 필터 분리
+                st.subheader("강화 아이템 검색", divider=True)
+                
+                # 검색입력과 버튼 배치
+                search_col1, search_col2 = st.columns([3, 1])
+                with search_col1:
+                    search_query = st.text_input("이름으로 강화 아이템 검색 (키워드 입력):", "")
+                with search_col2:
+                    search_button = st.button("검색", key="search_upgrade")
+                
+                # 검색 결과 처리
+                search_results = []
+                if search_query and (search_button or search_query.strip() != ""):
+                    search_results = search_items_by_name(search_query)
+                    if search_results:
+                        st.success(f"'{search_query}' 검색 결과: {len(search_results)}개 아이템 발견")
+                    else:
+                        st.warning(f"'{search_query}' 검색 결과가 없습니다.")
+                
+                # 필터링 인터페이스
+                st.subheader("강화 아이템 필터링", divider=True)
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    grade = st.selectbox("등급 선택 (강화 아이템):", GRADE_LIST)
+                
+                with col2:
+                    job = st.selectbox("직업 선택 (강화 아이템):", JOB_LIST)
+                
+                with col3:
+                    part = st.selectbox("부위 선택 (강화 아이템):", PART_LIST)
+                
+                # 필터 적용 버튼
+                filter_button = st.button("필터 검색", key="filter_upgrade")
+                filtered_items = []
+                
+                if filter_button:
+                    # 필터 상태 표시
+                    filter_status = []
+                    if grade != "모두":
+                        filter_status.append(f"등급: {grade}")
+                    if job != "모두":
+                        filter_status.append(f"직업: {job}")
+                    if part != "모두":
+                        filter_status.append(f"부위: {part}")
+                    
+                    if filter_status:
+                        st.caption(f"적용된 필터: {', '.join(filter_status)}")
+                    
+                    # 필터링 적용
+                    filtered_items = filter_items(grade, job, part)
+                
+                # 최종 표시 아이템 결정 (검색 또는 필터 중 하나만 사용)
+                display_items = []
+                if search_query and (search_button or search_query.strip() != "") and search_results:
+                    display_items = search_results
+                    st.subheader("검색 결과")
+                elif filter_button:
+                    if filtered_items:
+                        display_items = filtered_items
+                        st.subheader(f"필터링 결과 ({len(filtered_items)}개 아이템)")
+                    else:
+                        st.warning("조건에 맞는 아이템이 없습니다.")
+                else:
+                    # 기본 아이템 몇 개 표시
+                    display_items = filter_items("모두", "모두", "모두")[:30]
+                    st.subheader("강화 가능 아이템 목록")
+                
+                if len(display_items) == 0:
+                    st.warning("표시할 아이템이 없습니다.")
+                    st.info("다른 검색어를 입력하거나 필터 조건을 변경해보세요.")
+                
+                if display_items:
+                    # 등급별 색상 표시를 위한 함수
+                    def format_item(item):
+                        # Excel 컬럼 매핑: Grade -> grade, Name -> name, Id -> id
+                        grade = item.get('Grade', item.get('grade', 'N/A'))
+                        name = item.get('Name', item.get('name', 'Unknown'))
+                        id_value = item.get('Id', item.get('id', 'N/A'))
+                        job_info = item.get('job', '공용')
+                        job_info = job_info if job_info != "공용" else "공용"
+                        return f"[{grade}] {name} - {job_info} ({id_value})"
+                    
+                    # 아이템 선택 UI
+                    selected_item = st.selectbox(
+                        "강화할 아이템 선택:",
+                        options=display_items,
+                        format_func=format_item
+                    )
+                    
+                    item_id = selected_item.get("Id", selected_item.get("id", ""))
+                    
+                    # 선택된 아이템 정보 표시
+                    grade_color = GRADE_COLORS.get(selected_item["grade"], "gray")
+                    
+                    st.markdown(f"""
+                    <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                        <h4 style="color: {grade_color}; margin-top: 0;">{selected_item['name']}</h4>
+                        <p><strong>아이템 ID:</strong> {selected_item['id']}</p>
+                        <p><strong>등급:</strong> {selected_item['grade']}</p>
+                        <p><strong>직업:</strong> {selected_item['job']}</p>
+                        <p><strong>부위:</strong> {selected_item['part']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning("조건에 맞는 아이템이 없습니다.")
+                    item_id = ""
+            
+            # 강화 옵션 입력
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                count = st.text_input("생성할 개수:", "1")
+            
+            with col2:
+                level = st.slider("강화 레벨:", min_value=1, max_value=20, value=10)
+            
             additional_params["아이템ID"] = item_id
             additional_params["개수"] = count
-            additional_params["레벨"] = level
+            additional_params["레벨"] = str(level)
             
         elif selected_cheat == "귀속 여부에 따른 아이템 생성":
-            item_id = st.text_input("아이템 ID:", "00090001")
-            count = st.text_input("개수:", "1")
-            binding = st.selectbox("귀속 여부:", ["CHARACTER", "ACCOUNT", "NONE"])
+            # 아이템 검색 인터페이스 추가
+            search_method = st.radio("아이템 선택 방법 (귀속):", ["직접 ID 입력", "아이템 검색"], horizontal=True)
+            
+            if search_method == "직접 ID 입력":
+                item_id = st.text_input("아이템 ID:", "00090001")
+            else:
+                # 검색과 필터 분리
+                st.subheader("귀속 아이템 검색", divider=True)
+                
+                # 검색입력과 버튼 배치
+                search_col1, search_col2 = st.columns([3, 1])
+                with search_col1:
+                    search_query = st.text_input("이름으로 귀속 아이템 검색 (키워드 입력):", "")
+                with search_col2:
+                    search_button = st.button("검색", key="search_binding")
+                
+                # 검색 결과 처리
+                search_results = []
+                if search_query and (search_button or search_query.strip() != ""):
+                    search_results = search_items_by_name(search_query)
+                    if search_results:
+                        st.success(f"'{search_query}' 검색 결과: {len(search_results)}개 아이템 발견")
+                    else:
+                        st.warning(f"'{search_query}' 검색 결과가 없습니다.")
+                
+                # 필터링 인터페이스
+                st.subheader("귀속 아이템 필터링", divider=True)
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    grade = st.selectbox("등급 선택 (귀속 아이템):", GRADE_LIST)
+                
+                with col2:
+                    job = st.selectbox("직업 선택 (귀속 아이템):", JOB_LIST)
+                
+                with col3:
+                    part = st.selectbox("부위 선택 (귀속 아이템):", PART_LIST)
+                
+                # 필터 적용 버튼
+                filter_button = st.button("필터 검색", key="filter_binding")
+                filtered_items = []
+                
+                if filter_button:
+                    # 필터 상태 표시
+                    filter_status = []
+                    if grade != "모두":
+                        filter_status.append(f"등급: {grade}")
+                    if job != "모두":
+                        filter_status.append(f"직업: {job}")
+                    if part != "모두":
+                        filter_status.append(f"부위: {part}")
+                    
+                    if filter_status:
+                        st.caption(f"적용된 필터: {', '.join(filter_status)}")
+                
+                # 필터링 적용 (검색과 분리)
+                if filter_button:
+                    filtered_items = filter_items(grade, job, part)
+                
+                # 최종 표시 아이템 결정 (검색 또는 필터 중 하나만 사용)
+                display_items = []
+                if search_query and (search_button or search_query.strip() != "") and search_results:
+                    display_items = search_results
+                    st.subheader("검색 결과")
+                elif filter_button:
+                    if filtered_items:
+                        display_items = filtered_items
+                        st.subheader(f"필터링 결과 ({len(filtered_items)}개 아이템)")
+                    else:
+                        st.warning("조건에 맞는 아이템이 없습니다.")
+                else:
+                    # 기본 아이템 몇 개 표시
+                    display_items = filter_items("모두", "모두", "모두")[:30]
+                    st.subheader("귀속 가능 아이템 목록")
+                
+                if len(display_items) == 0:
+                    st.warning("표시할 아이템이 없습니다.")
+                    st.info("다른 검색어를 입력하거나 필터 조건을 변경해보세요.")
+                
+                if display_items:
+                    # 등급별 색상 표시를 위한 함수
+                    def format_item(item):
+                        # Excel 컬럼 매핑: Grade -> grade, Name -> name, Id -> id
+                        grade = item.get('Grade', item.get('grade', 'N/A'))
+                        name = item.get('Name', item.get('name', 'Unknown'))
+                        id_value = item.get('Id', item.get('id', 'N/A'))
+                        job_info = item.get('job', '공용')
+                        job_info = job_info if job_info != "공용" else "공용"
+                        return f"[{grade}] {name} - {job_info} ({id_value})"
+                    
+                    # 아이템 선택 UI
+                    selected_item = st.selectbox(
+                        "귀속 설정할 아이템 선택:",
+                        options=display_items,
+                        format_func=format_item
+                    )
+                    
+                    item_id = selected_item.get("Id", selected_item.get("id", ""))
+                    
+                    # 선택된 아이템 정보 표시
+                    grade_color = GRADE_COLORS.get(selected_item["grade"], "gray")
+                    
+                    st.markdown(f"""
+                    <div style="border: 1px solid {grade_color}; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                        <h4 style="color: {grade_color}; margin-top: 0;">{selected_item['name']}</h4>
+                        <p><strong>아이템 ID:</strong> {selected_item['id']}</p>
+                        <p><strong>등급:</strong> {selected_item['grade']}</p>
+                        <p><strong>직업:</strong> {selected_item['job']}</p>
+                        <p><strong>부위:</strong> {selected_item['part']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning("조건에 맞는 아이템이 없습니다.")
+                    item_id = ""
+            
+            # 귀속 및 개수 설정
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                count = st.text_input("개수:", "1")
+            
+            with col2:
+                binding = st.selectbox("귀속 여부:", ["CHARACTER", "ACCOUNT", "NONE"], 
+                                      help="CHARACTER: 캐릭터 귀속, ACCOUNT: 계정 귀속, NONE: 미귀속")
+            
             additional_params["아이템ID"] = item_id
             additional_params["개수"] = count
             additional_params["귀속 여부"] = binding
@@ -751,7 +1837,7 @@ def main():
             # 플레이스홀더 대체 (예: {MOB_ID}를 실제 값으로 대체)
             for key, value in additional_params.items():
                 placeholder = "{" + key + "}"
-                cheat_code = cheat_code.replace(placeholder, value)
+                cheat_code = cheat_code.replace(placeholder, str(value))
     
     # 게임 창이 확정된 경우에만 치트 실행 버튼 활성화
     if st.session_state.window_confirmed:

@@ -5,10 +5,86 @@ import os
 import sys
 import platform
 import pandas as pd
+from streamlit_option_menu import option_menu
 from window_manager import WindowManager
 from image_recognition import ImageRecognizer
 from auto_controller import AutoController
 from item_database import filter_items, search_items_by_name, JOB_LIST, GRADE_LIST, PART_LIST, GRADE_COLORS, CHARACTER_LIST
+
+# 전역 변수 정의
+test_mode_options = None
+
+# 다크 테마 및 UI 스타일 설정
+st.set_page_config(
+    page_title="게임 치트 자동화 프로그램",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# CSS 스타일 적용
+st.markdown("""
+<style>
+    /* 전체 다크 테마 스타일 */
+    .main {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+    }
+    
+    /* 사이드바 스타일 */
+    .css-1d391kg {
+        background-color: #252526;
+    }
+    
+    /* 헤더 스타일 */
+    h1, h2, h3 {
+        color: #e0e0e0 !important;
+    }
+    
+    /* 카드 스타일 */
+    .stCard {
+        background-color: #2d2d2d;
+        border-radius: 5px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* 아이콘 스타일 */
+    .icon {
+        display: inline-block;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    
+    /* 카테고리 스타일 */
+    .category-title {
+        font-weight: bold;
+        margin-top: 10px;
+    }
+    
+    /* 버튼 스타일 */
+    .stButton>button {
+        background-color: #0078d4;
+        color: white;
+    }
+    
+    /* 선택 박스 스타일 */
+    .stSelectbox>div>div {
+        background-color: #3c3c3c;
+    }
+    
+    /* 컨테이너 스타일 */
+    .stContainer {
+        background-color: #2d2d2d;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    
+    /* 구분선 스타일 */
+    hr {
+        border-color: #555555;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 def load_data(filename):
     """
@@ -217,8 +293,6 @@ def filter_data_with_rag(data, filters):
     return filtered_data
 
 def main():
-    st.title("게임 치트 자동화 프로그램")
-    
     # 세션 상태 초기화
     if 'window_confirmed' not in st.session_state:
         st.session_state.window_confirmed = False
@@ -226,8 +300,23 @@ def main():
     if 'selected_window' not in st.session_state:
         st.session_state.selected_window = None
     
-    # 사이드바 설정
-    st.sidebar.title("설정")
+    if 'current_cheat' not in st.session_state:
+        st.session_state.current_cheat = None
+    
+    if 'current_category' not in st.session_state:
+        st.session_state.current_category = None
+    
+    # 아이콘 매핑
+    icons = {
+        "🔥 전투 및 공격 관련": "🔥",
+        "🎯 이동 및 위치 조작 관련": "🎯",
+        "🎁 아이템 및 보상 생성 관련": "🎁",
+        "📈 아이템 강화 및 합성 관련": "📈",
+        "📚 퀘스트 조작 관련": "📚", 
+        "🎓 경험치 및 성장 관련": "🎓",
+        "🛠️ 테스트 및 디버깅 관련": "🛠️",
+        "⚙️ 설정": "⚙️"
+    }
     
     # 치트 코드 카테고리 및 하위 메뉴 구조
     cheat_structure = {
@@ -299,8 +388,122 @@ def main():
             "유닛 속도 변경",
             "서버 치트키 직접 실행",
             "치트창 열기"
+        ],
+        "⚙️ 설정": [
+            "게임 창 선택"
         ]
     }
+    
+    # 2단 레이아웃 구성
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        # 사이드바 메뉴 (파일 탐색기 스타일)
+        st.markdown("<h3 style='text-align: center;'>게임 치트 자동화</h3>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        # 탭 메뉴(상단 탭 형식)
+        selected_tab = option_menu(
+            menu_title=None,
+            options=["치트 메뉴", "설정"],
+            icons=["folder", "gear"],
+            menu_icon="cast",
+            default_index=0,
+            orientation="horizontal",
+        )
+        
+        if selected_tab == "치트 메뉴":
+            # 카테고리 표시 (왼쪽 파일 목록 형식)
+            st.markdown("<div class='category-title'>카테고리</div>", unsafe_allow_html=True)
+            
+            # 카테고리 메뉴
+            categories = list(cheat_structure.keys())
+            
+            # 카테고리 선택기
+            for category in categories:
+                if category != "⚙️ 설정":  # 설정은 탭에서 처리
+                    if st.button(f"{icons.get(category, '📁')} {category}", key=f"cat_{category}", use_container_width=True):
+                        st.session_state.current_category = category
+                        st.session_state.current_cheat = None
+            
+            # 현재 선택된 카테고리가 있을 경우 하위 메뉴 표시
+            if st.session_state.current_category and st.session_state.current_category in cheat_structure:
+                st.markdown(f"<div class='category-title'>선택: {st.session_state.current_category}</div>", unsafe_allow_html=True)
+                
+                # 카테고리 내 치트 메뉴 목록
+                cheats = cheat_structure[st.session_state.current_category]
+                
+                # 스크롤 가능한 컨테이너
+                with st.container():
+                    for cheat in cheats:
+                        if st.button(f"🔹 {cheat}", key=f"cheat_{cheat}", use_container_width=True):
+                            st.session_state.current_cheat = cheat
+        
+        elif selected_tab == "설정":
+            # 윈도우 관리자 초기화
+            window_manager = WindowManager()
+            windows = window_manager.get_windows()
+            
+            if not windows:
+                st.error("활성화된 윈도우가 없습니다.")
+            else:
+                # 운영체제 정보 표시
+                system_type = platform.system()
+                st.caption(f"현재 운영체제: {system_type}")
+                
+                # 시뮬레이션 모드 관련 정보 및 옵션
+                if window_manager.simulation_mode:
+                    if platform.system() == 'Windows':
+                        st.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
+                        st.code("pip install pygetwindow==0.0.9", language="bash")
+                        st.info("명령어를 실행한 후 프로그램을 다시 시작하세요.")
+                    elif platform.system() == 'Linux':
+                        st.warning("리눅스 환경에서는 시뮬레이션 모드로만 실행됩니다.")
+                
+                # 게임 창이 아직 확정되지 않은 경우, 선택 UI 표시
+                if not st.session_state.window_confirmed:
+                    # 창 선택 UI
+                    selected_window = st.selectbox(
+                        "게임 창을 선택하세요:",
+                        windows
+                    )
+                    
+                    # 직접 입력 옵션 추가
+                    use_custom_window = st.checkbox("직접 창 이름 입력하기")
+                    
+                    if use_custom_window:
+                        custom_window = st.text_input(
+                            "창 이름을 직접 입력하세요:", 
+                            placeholder="예: 게임 클라이언트", 
+                            value=selected_window if selected_window else ""
+                        )
+                        if custom_window:
+                            selected_window = custom_window
+                    
+                    # 확인 버튼
+                    if st.button("창 선택 확인", key="confirm_window"):
+                        if not selected_window:
+                            st.error("창을 선택하거나 이름을 입력해주세요.")
+                        else:
+                            st.session_state.window_confirmed = True
+                            st.session_state.selected_window = selected_window
+                            
+                            # 창 활성화 시도 (시뮬레이션 모드가 아닐 때만)
+                            if not window_manager.simulation_mode:
+                                if window_manager.activate_window(selected_window):
+                                    st.success(f"'{selected_window}' 창을 활성화했습니다.")
+                                else:
+                                    st.warning(f"'{selected_window}' 창 활성화에 실패했습니다. 수동으로 창을 선택해주세요.")
+                            
+                            st.experimental_rerun()  # UI 업데이트를 위해 페이지 리로드
+                else:
+                    # 이미 확정된 게임 창 정보 표시
+                    st.success(f"게임 창: '{st.session_state.selected_window}' 적용됨")
+                    
+                    # 변경 버튼 추가
+                    if st.button("변경", key="change_window"):
+                        st.session_state.window_confirmed = False
+                        st.experimental_rerun()  # UI 업데이트를 위해 페이지 리로드
     
     # 치트 정보 저장 (치트명, 치트키, 사용예시, 추가정보)
     cheat_info = {
@@ -605,136 +808,161 @@ def main():
         "0. 모두 비활성": "GT.TestMode 0"
     }
     
-    # 테스트 모드에 대한 특별 매핑
-    test_mode_codes = {
-        "1. 상태이상 테스트 활성": "GT.TestMode 1",
-        "2. 충돌 테스트 활성": "GT.TestMode 2",
-        "3. 파티원 어시스트 테스트 활성": "GT.TestMode 3", 
-        "0. 모두 비활성": "GT.TestMode 0"
-    }
+# 새 UI를 사용하는지 여부를 확인하는 플래그
+    use_new_ui = True
     
-    # 윈도우 목록 가져오기
-    window_manager = WindowManager()
-    windows = window_manager.get_windows()
+    # 테스트 모드 변경을 위한 추가 선택 옵션 정의 (전역 변수)
+    if 'test_mode_options' not in globals():
+        global test_mode_options
+        test_mode_options = None
     
-    if not windows:
-        st.error("활성화된 윈도우가 없습니다.")
-        return
-    
-    # 윈도우 선택을 사이드바로 이동
-    st.sidebar.subheader("게임 창 선택")
-    
-    # 운영체제 정보 표시
-    system_type = platform.system()
-    st.sidebar.caption(f"현재 운영체제: {system_type}")
-    
-    # 게임 창이 아직 확정되지 않은 경우, 선택 UI 표시
-    if not st.session_state.window_confirmed:
-        if window_manager.simulation_mode:
-            if platform.system() == 'Windows':
-                st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다. 실제 게임 창을 선택하려면:")
-                st.sidebar.code("pip install pygetwindow==0.0.9", language="bash")
-                st.sidebar.info("명령어를 실행한 후 프로그램을 다시 시작하세요.")
-                
-                # 직접 설치 버튼 옵션
-                if st.sidebar.button("pygetwindow 설치 시도", help="pygetwindow 패키지를 설치하여 실제 윈도우 선택 기능을 활성화합니다."):
-                    try:
-                        import subprocess
-                        subprocess.call([sys.executable, "-m", "pip", "install", "pygetwindow==0.0.9"])
-                        st.sidebar.success("설치가 완료되었습니다. 프로그램을 다시 시작하세요.")
-                        import pygetwindow as gw
-                        window_manager.simulation_mode = False
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.sidebar.error(f"설치 오류: {str(e)}")
-                        st.sidebar.info("수동으로 명령어를 실행해주세요.")
-            elif platform.system() == 'Linux':
-                st.sidebar.warning("리눅스 환경에서는 시뮬레이션 모드로만 실행됩니다. 실제 게임 창이 선택되지 않습니다.")
-            else:
-                st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
+    # 기존 코드와의 호환성 유지
+    if use_new_ui and st.session_state.current_cheat is not None:
+        # 이전 코드와의 호환성을 위한 변수 설정
+        selected_cheat = st.session_state.current_cheat 
+        selected_category = st.session_state.current_category
         
-        # 창 선택 UI
-        selected_window = st.sidebar.selectbox(
-            "게임 창을 선택하세요:",
-            windows
-        )
-        
-        # 직접 입력 옵션 추가
-        use_custom_window = st.sidebar.checkbox("직접 창 이름 입력하기")
-        
-        if use_custom_window:
-            custom_window = st.sidebar.text_input(
-                "창 이름을 직접 입력하세요:", 
-                placeholder="예: 게임 클라이언트", 
-                value=selected_window if selected_window else ""
-            )
-            if custom_window:
-                selected_window = custom_window
-        
-        # 확인 버튼
-        if st.sidebar.button("창 선택 확인", key="confirm_window"):
-            if not selected_window:
-                st.sidebar.error("창을 선택하거나 이름을 입력해주세요.")
-            else:
-                st.session_state.window_confirmed = True
-                st.session_state.selected_window = selected_window
-                
-                # 창 활성화 시도 (시뮬레이션 모드가 아닐 때만)
-                if not window_manager.simulation_mode:
-                    if window_manager.activate_window(selected_window):
-                        st.sidebar.success(f"'{selected_window}' 창을 활성화했습니다.")
-                    else:
-                        st.sidebar.warning(f"'{selected_window}' 창 활성화에 실패했습니다. 수동으로 창을 선택해주세요.")
-                
-                st.rerun()  # UI 업데이트를 위해 페이지 리로드
+        # 테스트 모드 치트에 대한 처리
+        if st.session_state.current_category == "🛠️ 테스트 및 디버깅 관련" and st.session_state.current_cheat == "테스트 모드 변경":
+            test_mode_options = "1. 상태이상 테스트 활성"  # 기본값
     else:
-        # 이미 확정된 게임 창 정보 표시
-        st.sidebar.success(f"게임 창: '{st.session_state.selected_window}' 적용됨")
-        
-        # 변경 버튼 추가
-        if st.sidebar.button("변경", key="change_window"):
-            st.session_state.window_confirmed = False
-            st.rerun()  # UI 업데이트를 위해 페이지 리로드
-        
-        # 선택된 창 사용
-        selected_window = st.session_state.selected_window
-    
-    # 카테고리 선택을 메인 화면으로 이동
-    st.subheader("치트 카테고리")
-    selected_category = st.selectbox(
-        "카테고리를 선택하세요:",
-        list(cheat_structure.keys())
-    )
-    
-    # 선택된 카테고리의 치트 코드 선택을 메인 화면으로 이동
-    selected_cheat = st.selectbox(
-        "기능을 선택하세요:",
-        cheat_structure[selected_category]
-    )
-    
-    # 선택된 치트에 대한 정보 표시
-    if selected_cheat in cheat_info:
-        info = cheat_info[selected_cheat]
-        
-        # 정보 섹션 만들기
-        with st.expander("치트 정보", expanded=True):
-            if info["예시"]:
-                st.code(info["예시"], language="bash")
-            if info["정보"]:
-                st.info(info["정보"])
-    
-    # 테스트 모드 변경을 위한 추가 선택 옵션 (메인 화면으로 이동)
-    test_mode_options = None
-    if selected_category == "🛠️ 테스트 및 디버깅 관련" and selected_cheat == "테스트 모드 변경":
-        test_mode_options = st.selectbox(
-            "테스트 모드 선택:",
-            [
-                "1. 상태이상 테스트 활성",
-                "2. 충돌 테스트 활성",
-                "3. 파티원 어시스트 테스트 활성",
-                "0. 모두 비활성"
-            ]
+        # 기존 인터페이스 사용 시 필요한 변수들
+        selected_category = st.selectbox(
+            "카테고리를 선택하세요:",
+            list(cheat_structure.keys()),
+            key="category_select_legacy"
         )
+        
+        selected_cheat = st.selectbox(
+            "기능을 선택하세요:",
+            cheat_structure[selected_category],
+            key="cheat_select_legacy"
+        )
+    
+    # 새 UI 레이아웃
+    if use_new_ui:
+        with col2:
+            # 선택된 치트가 없거나 설정 화면이면 홈 화면 표시
+            if st.session_state.current_cheat is None:
+                if st.session_state.current_category is None:
+                    # 홈 화면
+                    st.markdown("<h1 style='text-align: center;'>게임 치트 자동화 프로그램</h1>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center;'>왼쪽 메뉴에서 카테고리와 기능을 선택하세요</p>", unsafe_allow_html=True)
+                    
+                    # 간단한 통계와 시작 가이드
+                    col_a, col_b = st.columns(2)
+                    
+                    # 좌측 카드
+                    with col_a:
+                        with st.container():
+                            st.markdown("""
+                            <div class='stCard'>
+                                <h3>📚 시작하기</h3>
+                                <p>1. <b>게임 창 선택</b>: 오른쪽 상단 "설정" 탭에서 게임 창을 선택하세요.</p>
+                                <p>2. <b>카테고리 선택</b>: 왼쪽 카테고리 목록에서 원하는 치트 종류를 선택하세요.</p>
+                                <p>3. <b>기능 사용</b>: 세부 기능을 선택하고 필요한 정보를 입력한 후 실행하세요.</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # 우측 카드
+                    with col_b:
+                        with st.container():
+                            st.markdown("""
+                            <div class='stCard'>
+                                <h3>💡 자주 사용하는 기능</h3>
+                                <p>• <b>아이템 생성</b>: 엑셀 데이터를 활용한 아이템 필터링 및 생성</p>
+                                <p>• <b>이동 조작</b>: 지정한 좌표로 캐릭터 이동</p>
+                                <p>• <b>전투 능력</b>: 무적, 대미지 증가 등 전투 관련 치트</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # 게임 창 상태 표시
+                    st.markdown("<hr>", unsafe_allow_html=True)
+                    
+                    # 창 선택 상태
+                    window_manager = WindowManager()
+                    
+                    if st.session_state.window_confirmed:
+                        st.success(f"✅ 게임 창 '{st.session_state.selected_window}'이(가) 선택되었습니다.")
+                    else:
+                        st.warning("⚠️ 게임 창이 선택되지 않았습니다. '설정' 탭에서 창을 선택해주세요.")
+                        
+                        if window_manager.simulation_mode:
+                            if platform.system() == 'Windows':
+                                st.error("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
+                                with st.expander("해결 방법"):
+                                    st.code("pip install pygetwindow==0.0.9", language="bash")
+                                    st.info("위 명령어를 실행한 후 프로그램을 다시 시작하세요.")
+                            elif platform.system() == 'Linux':
+                                st.error("리눅스 환경에서는 시뮬레이션 모드로만 실행됩니다.")
+                else:
+                    # 카테고리 헤더 표시
+                    st.markdown(f"<h2>{st.session_state.current_category}</h2>", unsafe_allow_html=True)
+                    st.markdown("<p>왼쪽 메뉴에서 세부 기능을 선택하세요</p>", unsafe_allow_html=True)
+                    
+                    # 카테고리 설명
+                    category_descriptions = {
+                        "🔥 전투 및 공격 관련": "캐릭터의 전투 능력을 강화하고 공격 관련 기능을 조작합니다.",
+                        "🎯 이동 및 위치 조작 관련": "게임 내 캐릭터의 이동 및 위치를 조작합니다.",
+                        "🎁 아이템 및 보상 생성 관련": "다양한 아이템과 보상을 생성합니다.",
+                        "📈 아이템 강화 및 합성 관련": "아이템 강화와 합성 관련 기능을 제공합니다.",
+                        "📚 퀘스트 조작 관련": "게임 내 퀘스트를 조작하고 관리합니다.",
+                        "🎓 경험치 및 성장 관련": "캐릭터의 경험치와 성장 관련 기능을 제공합니다.",
+                        "🛠️ 테스트 및 디버깅 관련": "게임 테스트와 디버깅을 위한 기능을 제공합니다."
+                    }
+                    
+                    # 카테고리 설명 표시
+                    if st.session_state.current_category in category_descriptions:
+                        st.info(category_descriptions[st.session_state.current_category])
+                    
+                    # 카테고리 내 기능 리스트를 그리드로 표시
+                    if st.session_state.current_category in cheat_structure:
+                        cheats = cheat_structure[st.session_state.current_category]
+                        
+                        # 3열 그리드 레이아웃
+                        cols = st.columns(3)
+                        
+                        for i, cheat in enumerate(cheats):
+                            with cols[i % 3]:
+                                if st.button(f"🔹 {cheat}", key=f"grid_{cheat}", use_container_width=True):
+                                    st.session_state.current_cheat = cheat
+                                    st.experimental_rerun()
+            else:
+                # 선택된 치트 표시
+                st.markdown(f"<h2>{st.session_state.current_cheat}</h2>", unsafe_allow_html=True)
+                
+                # 뒤로가기 버튼
+                if st.button("◀️ 뒤로"):
+                    st.session_state.current_cheat = None
+                    st.experimental_rerun()
+                    
+                # 치트 정보 표시
+                if st.session_state.current_cheat in cheat_info:
+                    info = cheat_info[st.session_state.current_cheat]
+                    
+                    # 정보 카드
+                    with st.container():
+                        st.markdown("<div class='stCard'>", unsafe_allow_html=True)
+                        st.markdown("<h3>치트 정보</h3>", unsafe_allow_html=True)
+                        
+                        if info["예시"]:
+                            st.code(info["예시"], language="bash")
+                        if info["정보"]:
+                            st.info(info["정보"])
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                
+                # 테스트 모드 변경을 위한 추가 선택 옵션 (전역 변수 사용)
+                if st.session_state.current_category == "🛠️ 테스트 및 디버깅 관련" and st.session_state.current_cheat == "테스트 모드 변경":
+                    test_mode_options = st.selectbox(
+                        "테스트 모드 선택:",
+                        [
+                            "1. 상태이상 테스트 활성",
+                            "2. 충돌 테스트 활성",
+                            "3. 파티원 어시스트 테스트 활성",
+                            "0. 모두 비활성"
+                        ]
+                    )
     
     # 선택된 치트에 추가 입력이 필요한지 확인
     additional_params = {}
@@ -1321,20 +1549,26 @@ def main():
             value = st.radio(label, options)
             additional_params["숫자값"] = "1" if value == options[0] else "0"
             
-        elif selected_cheat == "테스트 모드 변경" and not test_mode_options:
-            value = st.radio("테스트 모드 선택:", [
-                "상태이상 테스트 활성",
-                "충돌 테스트 활성",
-                "파티원 어시스트 테스트 활성", 
-                "모두 비활성"
-            ])
-            mode_map = {
-                "상태이상 테스트 활성": "1",
-                "충돌 테스트 활성": "2",
-                "파티원 어시스트 테스트 활성": "3",
-                "모두 비활성": "0"
-            }
-            additional_params["숫자값"] = mode_map[value]
+        elif selected_cheat == "테스트 모드 변경":
+            # 테스트 모드 옵션이 정의되어 있지 않으면 라디오 버튼으로 선택
+            if 'test_mode_options' not in locals() or test_mode_options is None:
+                value = st.radio("테스트 모드 선택:", [
+                    "상태이상 테스트 활성",
+                    "충돌 테스트 활성",
+                    "파티원 어시스트 테스트 활성", 
+                    "모두 비활성"
+                ])
+                mode_map = {
+                    "상태이상 테스트 활성": "1",
+                    "충돌 테스트 활성": "2",
+                    "파티원 어시스트 테스트 활성": "3",
+                    "모두 비활성": "0"
+                }
+                additional_params["숫자값"] = mode_map[value]
+            else:
+                # 이미 selectbox에서 선택된 테스트 모드 옵션 사용
+                mode_value = test_mode_options.split(".")[0]
+                additional_params["숫자값"] = mode_value
             
         elif selected_cheat == "배틀로얄 참가 최대 인원 변경":
             count = st.text_input("최대 인원:", "2")
@@ -1840,7 +2074,7 @@ def main():
     
     # 선택된 치트 코드 가져오기
     # 테스트 모드 변경인 경우 세부 옵션 코드 사용
-    if test_mode_options:
+    if selected_cheat == "테스트 모드 변경" and 'test_mode_options' in globals() and test_mode_options is not None:
         cheat_code = test_mode_codes.get(test_mode_options, "GT.TestMode 0")
     else:
         # 매핑된 코드가 없으면 기본값으로 치트 이름 그대로 사용

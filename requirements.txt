@@ -3,7 +3,9 @@ pygetwindow==0.0.9
 pandas==2.2.1
 openpyxl==3.1.2
 PyAutoGUI==0.9.54
-python-xlib==0.33
+# python-xlib는 윈도우에서 지원되지 않으므로 제외
+# python-xlib==0.33
 pillow==10.2.0
 numpy==1.26.4
+pyinstaller==6.5.0
 # opencv-python==4.9.0.80

@@ -630,7 +630,10 @@ def main():
     # 게임 창이 아직 확정되지 않은 경우, 선택 UI 표시
     if not st.session_state.window_confirmed:
         if window_manager.simulation_mode:
-            st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
+            if platform.system() == 'Linux':
+                st.sidebar.warning("리눅스 환경에서는 시뮬레이션 모드로만 실행됩니다. 실제 게임 창이 선택되지 않습니다.")
+            else:
+                st.sidebar.warning("윈도우 관리가 시뮬레이션 모드로 실행 중입니다.")
         
         # 창 선택 UI
         selected_window = st.sidebar.selectbox(
@@ -831,7 +834,8 @@ def main():
                         found_key = None
                         
                         # Items.xlsx 엑셀 파일 직접 로딩하여 Type 값 추출
-                        excel_items = load_data("excel_data/Items.xlsx")
+                        # data/items.json 경로로 전달하면 내부에서 excel_data/Items.xlsx로 변환하고 없으면 생성함
+                        excel_items = load_data_from_json("data/items.json")
                         
                         if excel_items and len(excel_items) > 0:
                             # 어떤 키가 있는지 확인

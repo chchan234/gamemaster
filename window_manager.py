@@ -20,7 +20,12 @@ elif SYSTEM == 'Darwin':
     except (ImportError, NotImplementedError):
         SIMULATION_MODE = True
         print("macOS에서 윈도우 정보를 불러올 수 없습니다. 시뮬레이션 모드로 실행합니다.")
-# 기타 환경(Linux 등)에서는 시뮬레이션 모드
+# Linux 환경에서는 현재 직접 지원이 어려워 시뮬레이션 모드 사용
+# 나중에 Linux 지원을 추가할 수 있음
+elif SYSTEM == 'Linux':
+    SIMULATION_MODE = True
+    print("Linux 환경에서는 현재 시뮬레이션 모드로만 실행됩니다.")
+# 기타 환경에서는 시뮬레이션 모드
 else:
     SIMULATION_MODE = True
     print(f"{SYSTEM} 환경에서는 시뮬레이션 모드로 실행합니다.")
@@ -39,6 +44,10 @@ class WindowManager:
         
         # 운영 체제 타입 저장
         self.system = platform.system()
+        
+        # 환경 감지 및 시뮬레이션 모드 오버라이드
+        # 사용자가 강제로 실제 윈도우 사용 가능
+        self.check_environment()
     
     def get_windows(self):
         """현재 실행 중인 모든 윈도우 목록을 반환합니다."""
@@ -86,6 +95,31 @@ class WindowManager:
             except (IndexError, Exception) as e:
                 print(f"윈도우 활성화 실패: {e}")
                 return False
+    
+    def check_environment(self):
+        """환경을 확인하고 윈도우 시스템 사용 가능성 테스트"""
+        # 이미 시뮬레이션 모드가 아니라면 그대로 유지
+        if not self.simulation_mode:
+            return
+        
+        # Linux 환경에서 추가 확인
+        if self.system == 'Linux':
+            try:
+                # PyAutoGUI를 통해 스크린 크기 확인 시도
+                import pyautogui
+                screen_width, screen_height = pyautogui.size()
+                
+                # 스크린 크기를 가져올 수 있다면 
+                # 윈도우 관리 패키지가 제대로 설치된 것으로 간주
+                if screen_width > 0 and screen_height > 0:
+                    print(f"화면 크기 감지: {screen_width}x{screen_height}")
+                    print("Linux 환경에서 윈도우 관리를 사용할 수 있습니다.")
+                    # 실제 윈도우 사용 설정
+                    self.simulation_mode = False
+                    return
+            except Exception as e:
+                print(f"Linux 환경 확인 중 오류: {e}")
+                print("시뮬레이션 모드로 계속합니다.")
     
     def get_window_rect(self, window_title):
         """윈도우의 위치와 크기를 반환합니다."""

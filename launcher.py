@@ -19,7 +19,13 @@ class LauncherApp:
         self.root.resizable(False, False)
         
         # 현재 스크립트 경로 및 파이썬 경로 설정
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        # PyInstaller가 만든 실행 파일에서 사용할 수 있도록 경로 설정
+        if getattr(sys, 'frozen', False):
+            # PyInstaller로 패키징된 경우
+            self.script_dir = os.path.dirname(sys.executable)
+        else:
+            # 일반 Python 스크립트로 실행된 경우
+            self.script_dir = os.path.dirname(os.path.abspath(__file__))
         
         # 상단 로고 및 설명
         self.header_frame = tk.Frame(root)
@@ -230,13 +236,41 @@ class LauncherApp:
                 main_script = os.path.join(self.script_dir, "main.py")
                 self.update_log(f"프로그램 실행: {main_script}")
                 
+                # 실행 환경 확인
+                if getattr(sys, 'frozen', False):
+                    # PyInstaller로 패키징된 경우, Python 실행 파일은 함께 번들링된 버전 사용
+                    python_exe = os.path.join(self.script_dir, "python")
+                    if platform.system() == "Windows":
+                        python_exe += ".exe"
+                    
+                    if not os.path.exists(python_exe):
+                        python_exe = sys.executable
+                else:
+                    python_exe = sys.executable
+                
                 # Streamlit 실행
-                process = subprocess.Popen(
-                    [sys.executable, "-m", "streamlit", "run", main_script],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True
-                )
+                try:
+                    self.update_log(f"Python 경로: {python_exe}")
+                    process = subprocess.Popen(
+                        [python_exe, "-m", "streamlit", "run", main_script],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True
+                    )
+                except Exception as e:
+                    self.update_log(f"Streamlit 실행 오류: {str(e)}")
+                    # 백업 방법: 직접 Python 스크립트 실행
+                    try:
+                        self.update_log("대체 방법으로 직접 실행 시도...")
+                        process = subprocess.Popen(
+                            [python_exe, main_script],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            universal_newlines=True
+                        )
+                    except Exception as e2:
+                        self.update_log(f"대체 실행 방법도 실패: {str(e2)}")
+                        raise
                 
                 # 초기 출력 몇 줄 읽기
                 for _ in range(10):

@@ -65,6 +65,12 @@ def main():
         f"--distpath={output_dir}",
         f"--workpath={build_dir}",
         "--clean",
+        "--collect-all=streamlit",
+        "--collect-all=pandas",
+        "--collect-all=openpyxl",
+        "--collect-all=pyautogui",
+        "--collect-all=PIL",
+        "--collect-all=numpy",
         "--add-data", f"{os.path.join(current_dir, 'excel_data')}{os.pathsep}excel_data",
         "--add-data", f"{os.path.join(current_dir, 'templates')}{os.pathsep}templates",
     ]
@@ -81,7 +87,14 @@ def main():
         "--hidden-import=streamlit",
         "--hidden-import=pandas",
         "--hidden-import=pygetwindow",
-        "--hidden-import=openpyxl"
+        "--hidden-import=openpyxl",
+        "--hidden-import=pyautogui",
+        "--hidden-import=pillow",
+        "--hidden-import=PIL",
+        "--hidden-import=numpy",
+        "--hidden-import=tkinter",
+        "--hidden-import=threading",
+        "--hidden-import=subprocess"
     ])
     
     # 명령 실행

@@ -28,7 +28,7 @@ import os
 import sys
 import platform
 import pandas as pd
-from streamlit_option_menu import option_menu
+# 외부 라이브러리들을 가져옵니다
 from window_manager import WindowManager
 from image_recognition import ImageRecognizer
 from auto_controller import AutoController
@@ -37,7 +37,7 @@ from item_database import filter_items, search_items_by_name, JOB_LIST, GRADE_LI
 # 전역 변수 정의
 test_mode_options = None
 
-# 다크 테마 및 UI 스타일 설정
+# 밝은 테마 및 모던 UI 스타일 설정
 st.set_page_config(
     page_title="게임 치트 자동화 프로그램",
     layout="wide",
@@ -47,64 +47,104 @@ st.set_page_config(
 # CSS 스타일 적용
 st.markdown("""
 <style>
-    /* 전체 다크 테마 스타일 */
+    /* 기본 스타일 초기화 */
     .main {
-        background-color: #1e1e1e;
-        color: #e0e0e0;
+        background-color: white;
+        color: #333333;
     }
     
-    /* 사이드바 스타일 */
-    .css-1d391kg {
-        background-color: #252526;
+    /* 심플한 헤더 스타일 */
+    h1 {
+        color: #333333 !important;
+        font-size: 28px !important;
+        font-weight: 600;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
     }
     
-    /* 헤더 스타일 */
-    h1, h2, h3 {
-        color: #e0e0e0 !important;
+    h2 {
+        color: #333333 !important;
+        font-size: 20px !important;
+        margin-top: 20px;
     }
     
-    /* 카드 스타일 */
-    .stCard {
-        background-color: #2d2d2d;
-        border-radius: 5px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* 아이콘 스타일 */
-    .icon {
-        display: inline-block;
-        margin-right: 8px;
-        vertical-align: middle;
-    }
-    
-    /* 카테고리 스타일 */
-    .category-title {
-        font-weight: bold;
-        margin-top: 10px;
+    h3 {
+        color: #333333 !important;
+        font-size: 16px !important;
     }
     
     /* 버튼 스타일 */
-    .stButton>button {
-        background-color: #0078d4;
+    .stButton > button {
+        background-color: #4285F4;
         color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-weight: 500;
     }
     
-    /* 선택 박스 스타일 */
-    .stSelectbox>div>div {
-        background-color: #3c3c3c;
+    .stButton > button:hover {
+        background-color: #3b78e7;
     }
     
-    /* 컨테이너 스타일 */
-    .stContainer {
-        background-color: #2d2d2d;
-        border-radius: 5px;
+    /* 선택 박스 */
+    .stSelectbox > div > div {
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    /* 심플한 알림 메시지 */
+    div[data-testid="stInfo"] {
+        background-color: #e8f0fe;
         padding: 10px;
+        border-radius: 4px;
     }
     
-    /* 구분선 스타일 */
+    div[data-testid="stSuccess"] {
+        background-color: #e6f4ea;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    div[data-testid="stWarning"] {
+        background-color: #fef7e0;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    div[data-testid="stError"] {
+        background-color: #fce8e6;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    /* 구분선 */
     hr {
-        border-color: #555555;
+        margin: 15px 0;
+        border: none;
+        height: 1px;
+        background-color: #eee;
+    }
+    
+    /* 메뉴 버튼 스타일 */
+    .cat-button {
+        text-align: left !important;
+        margin-bottom: 2px !important;
+        padding: 8px !important;
+    }
+    
+    .sub-button {
+        text-align: left !important;
+        padding-left: 20px !important;
+        font-size: 14px !important;
+        background-color: #f8f9fa !important;
+        color: #333 !important;
+    }
+    
+    /* 텍스트 기본 간격 */
+    p {
+        margin-bottom: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -316,6 +356,20 @@ def filter_data_with_rag(data, filters):
     return filtered_data
 
 def main():
+    # 앱 로고와 타이틀을 포함한 헤더 구성
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        try:
+            st.image("templates/menu.png", width=80)
+        except:
+            # 이미지를 로드할 수 없는 경우 아이콘으로 대체
+            st.markdown("# 🎮")
+    with col2:
+        st.title("게임 치트 자동화 프로그램")
+        st.markdown("##### 편리하고 안전한 게임 치트 코드 입력 자동화 시스템")
+    
+    st.markdown("---")
+    
     # 세션 상태 초기화
     if 'window_confirmed' not in st.session_state:
         st.session_state.window_confirmed = False
@@ -328,22 +382,25 @@ def main():
     
     if 'current_category' not in st.session_state:
         st.session_state.current_category = None
+        
+    if 'expanded_categories' not in st.session_state:
+        st.session_state.expanded_categories = {}
     
-    # 아이콘 매핑
-    icons = {
-        "🔥 전투 및 공격 관련": "🔥",
-        "🎯 이동 및 위치 조작 관련": "🎯",
-        "🎁 아이템 및 보상 생성 관련": "🎁",
-        "📈 아이템 강화 및 합성 관련": "📈",
-        "📚 퀘스트 조작 관련": "📚", 
-        "🎓 경험치 및 성장 관련": "🎓",
-        "🛠️ 테스트 및 디버깅 관련": "🛠️",
-        "⚙️ 설정": "⚙️"
-    }
+    # 아이콘 없는 카테고리 이름
+    categories = [
+        "전투 및 공격 관련",
+        "이동 및 위치 조작 관련",
+        "아이템 및 보상 생성 관련",
+        "아이템 강화 및 합성 관련",
+        "퀘스트 조작 관련",
+        "경험치 및 성장 관련",
+        "테스트 및 디버깅 관련",
+        "설정"
+    ]
     
-    # 치트 코드 카테고리 및 하위 메뉴 구조
+    # 치트 코드 카테고리 및 하위 메뉴 구조 (아이콘 제거)
     cheat_structure = {
-        "🔥 전투 및 공격 관련": [
+        "전투 및 공격 관련": [
             "유닛 수동 공격",
             "HP 절반 만들기",
             "HP, MP 전체 회복",
@@ -358,7 +415,7 @@ def main():
             "플레이어 위치 클립보드로 복사",
             "BASE 이동"
         ],
-        "🎯 이동 및 위치 조작 관련": [
+        "이동 및 위치 조작 관련": [
             "유닛 좌표 이동",
             "NPC 좌표로 이동",
             "PROP 좌표로 이동",
@@ -368,7 +425,7 @@ def main():
             "특정 퀘스트 강제 실행",
             "특정 ID 퀘스트 골카운트 n 수치로 실행"
         ],
-        "🎁 아이템 및 보상 생성 관련": [
+        "아이템 및 보상 생성 관련": [
             "아이템 생성",
             "아바타 아이템 생성",
             "탈것 생성",
@@ -382,7 +439,7 @@ def main():
             "아이템 보상 드랍 FX Trail 속도",
             "커런시 획득"
         ],
-        "📈 아이템 강화 및 합성 관련": [
+        "아이템 강화 및 합성 관련": [
             "아이템 강화",
             "아이템 하락 강화",
             "합성",
@@ -390,17 +447,17 @@ def main():
             "자동 합성",
             "실패누적보상"
         ],
-        "📚 퀘스트 조작 관련": [
+        "퀘스트 조작 관련": [
             "퀘스트 몬스터킬",
             "일일 의뢰 초기화"
         ],
-        "🎓 경험치 및 성장 관련": [
+        "경험치 및 성장 관련": [
             "경험치 증가",
             "스킬 획득",
             "길드 경험치 설정",
             "폴른 포인트 초기화"
         ],
-        "🛠️ 테스트 및 디버깅 관련": [
+        "테스트 및 디버깅 관련": [
             "테스트 모드 변경",
             "상태이상 테스트 (활성 / 비활성)",
             "충돌 테스트 (활성 / 비활성)",
@@ -412,57 +469,54 @@ def main():
             "서버 치트키 직접 실행",
             "치트창 열기"
         ],
-        "⚙️ 설정": [
+        "설정": [
             "게임 창 선택"
         ]
     }
     
-    # 2단 레이아웃 구성
-    col1, col2 = st.columns([1, 3])
+    # 심플한 사이드바 메뉴 구성
+    with st.sidebar:
+        st.title("게임 치트 자동화")
+        st.markdown("---")
+        
+        # 카테고리 탭
+        st.subheader("메뉴")
+        
+        # 각 카테고리 버튼
+        for category in categories:
+            # 카테고리 버튼
+            if st.button(category, key=f"cat_{category}", use_container_width=True, 
+                        help=f"{category} 메뉴 선택"):
+                st.session_state.current_category = category
+                st.session_state.current_cheat = None
+                st.session_state.expanded_categories = {}  # 모든 확장 상태 초기화
+                st.session_state.expanded_categories[category] = True  # 현재 카테고리만 확장
+                st.experimental_rerun()
+        
+        # 현재 선택된 카테고리에 대한 서브메뉴 표시
+        if st.session_state.current_category in cheat_structure:
+            st.markdown("---")
+            st.markdown(f"#### {st.session_state.current_category}")
+            
+            # 서브메뉴 표시
+            cheats = cheat_structure[st.session_state.current_category]
+            for cheat in cheats:
+                if st.button(cheat, key=f"cheat_{cheat}", use_container_width=True):
+                    st.session_state.current_cheat = cheat
+                    st.experimental_rerun()
+        
+        # 설정 섹션
+        st.markdown("---")
+        if st.button("설정", use_container_width=True, key="settings_button"):
+            st.session_state.current_category = "설정"
+            st.session_state.current_cheat = "게임 창 선택"
+            st.experimental_rerun()
     
-    with col1:
-        # 사이드바 메뉴 (파일 탐색기 스타일)
-        st.markdown("<h3 style='text-align: center;'>게임 치트 자동화</h3>", unsafe_allow_html=True)
-        st.markdown("<hr>", unsafe_allow_html=True)
-        
-        # 탭 메뉴(상단 탭 형식)
-        selected_tab = option_menu(
-            menu_title=None,
-            options=["치트 메뉴", "설정"],
-            icons=["folder", "gear"],
-            menu_icon="cast",
-            default_index=0,
-            orientation="horizontal",
-        )
-        
-        if selected_tab == "치트 메뉴":
-            # 카테고리 표시 (왼쪽 파일 목록 형식)
-            st.markdown("<div class='category-title'>카테고리</div>", unsafe_allow_html=True)
-            
-            # 카테고리 메뉴
-            categories = list(cheat_structure.keys())
-            
-            # 카테고리 선택기
-            for category in categories:
-                if category != "⚙️ 설정":  # 설정은 탭에서 처리
-                    if st.button(f"{icons.get(category, '📁')} {category}", key=f"cat_{category}", use_container_width=True):
-                        st.session_state.current_category = category
-                        st.session_state.current_cheat = None
-            
-            # 현재 선택된 카테고리가 있을 경우 하위 메뉴 표시
-            if st.session_state.current_category and st.session_state.current_category in cheat_structure:
-                st.markdown(f"<div class='category-title'>선택: {st.session_state.current_category}</div>", unsafe_allow_html=True)
-                
-                # 카테고리 내 치트 메뉴 목록
-                cheats = cheat_structure[st.session_state.current_category]
-                
-                # 스크롤 가능한 컨테이너
-                with st.container():
-                    for cheat in cheats:
-                        if st.button(f"🔹 {cheat}", key=f"cheat_{cheat}", use_container_width=True):
-                            st.session_state.current_cheat = cheat
-        
-        elif selected_tab == "설정":
+    # 메인 콘텐츠 영역
+    st.write("## 게임 치트 자동화 도구")
+    st.write("왼쪽 사이드바에서 원하는 기능을 선택하세요.")
+    
+    if st.session_state.current_category == "설정":
             # 윈도우 관리자 초기화
             window_manager = WindowManager()
             windows = window_manager.get_windows()

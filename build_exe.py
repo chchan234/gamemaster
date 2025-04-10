@@ -71,6 +71,14 @@ def main():
         "--add-data", f"{os.path.join(current_dir, 'requirements.txt')}{os.pathsep}.",
     ]
     
+    # streamlit-option-menu 패키지 설치 (모든 플랫폼)
+    try:
+        print("streamlit-option-menu 패키지 설치 중...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "streamlit-option-menu"])
+        print("streamlit-option-menu 설치 완료")
+    except Exception as e:
+        print(f"streamlit-option-menu 설치 중 오류: {e}")
+    
     # Windows에서 추가 옵션
     if platform.system() == "Windows":
         # 먼저 필수 패키지 설치 여부 확인 및 설치
@@ -94,7 +102,8 @@ def main():
                 "PyAutoGUI==0.9.54",
                 "pillow==10.2.0",
                 "numpy==1.26.4",
-                "pyinstaller==6.5.0"
+                "pyinstaller==6.5.0",
+                "streamlit-option-menu==0.3.6"
             ]
         
         # 주석 제거 및 공백 제거
@@ -118,6 +127,7 @@ def main():
         # PyInstaller 명령에 필요한 패키지 추가
         cmd.extend([
             "--collect-submodules=streamlit",
+            "--collect-submodules=streamlit_option_menu",
             "--collect-submodules=pandas",
             "--collect-submodules=openpyxl",
             "--collect-submodules=pyautogui", 
@@ -140,6 +150,7 @@ def main():
         "--hidden-import=streamlit.web.bootstrap",
         "--hidden-import=streamlit.runtime",
         "--hidden-import=streamlit.runtime.scriptrunner",
+        "--hidden-import=streamlit_option_menu",
         "--hidden-import=pandas",
         "--hidden-import=pygetwindow",
         "--hidden-import=openpyxl",

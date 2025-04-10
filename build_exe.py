@@ -65,29 +65,48 @@ def main():
         f"--distpath={output_dir}",
         f"--workpath={build_dir}",
         "--clean",
-        "--collect-all=streamlit",
-        "--collect-all=pandas",
-        "--collect-all=openpyxl",
-        "--collect-all=pyautogui",
-        "--collect-all=PIL",
-        "--collect-all=numpy",
+        # 데이터 파일 추가
         "--add-data", f"{os.path.join(current_dir, 'excel_data')}{os.pathsep}excel_data",
         "--add-data", f"{os.path.join(current_dir, 'templates')}{os.pathsep}templates",
-        "--add-binary", f"{os.path.join(current_dir, 'requirements.txt')}{os.pathsep}.",
+        "--add-data", f"{os.path.join(current_dir, 'requirements.txt')}{os.pathsep}.",
     ]
     
-    # Windows에서는 Python 사이트 패키지도 포함
+    # Windows에서 추가 옵션
     if platform.system() == "Windows":
-        import site
-        site_packages = site.getsitepackages()[0]
+        # 먼저 필수 패키지 설치 여부 확인 및 설치
+        print("필수 패키지 설치 확인 중...")
+        
+        with open(os.path.join(current_dir, "requirements.txt"), "r") as req_file:
+            requirements = req_file.readlines()
+        
+        # 주석 제거 및 공백 제거
+        packages = []
+        for req in requirements:
+            req = req.strip()
+            if req and not req.startswith("#"):
+                # 버전 정보 제거
+                package = req.split("==")[0]
+                packages.append(package)
+        
+        # 필수 패키지 설치
+        for package in packages:
+            try:
+                print(f"{package} 설치 여부 확인 중...")
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                print(f"{package} 설치 완료")
+            except Exception as e:
+                print(f"{package} 설치 중 오류: {e}")
+        
+        # PyInstaller 명령에 필요한 패키지 추가
         cmd.extend([
-            "--add-binary", f"{os.path.join(site_packages, 'streamlit')}{os.pathsep}streamlit",
-            "--add-binary", f"{os.path.join(site_packages, 'pandas')}{os.pathsep}pandas",
-            "--add-binary", f"{os.path.join(site_packages, 'pygetwindow')}{os.pathsep}pygetwindow",
-            "--add-binary", f"{os.path.join(site_packages, 'openpyxl')}{os.pathsep}openpyxl",
-            "--add-binary", f"{os.path.join(site_packages, 'pyautogui')}{os.pathsep}pyautogui",
-            "--add-binary", f"{os.path.join(site_packages, 'PIL')}{os.pathsep}PIL",
-            "--add-binary", f"{os.path.join(site_packages, 'numpy')}{os.pathsep}numpy",
+            "--collect-submodules=streamlit",
+            "--collect-submodules=pandas",
+            "--collect-submodules=openpyxl",
+            "--collect-submodules=pyautogui", 
+            "--collect-submodules=pygetwindow",
+            "--collect-submodules=PIL",
+            "--collect-submodules=numpy",
+            "--collect-submodules=tkinter"
         ])
     
     # 아이콘 추가
@@ -101,6 +120,8 @@ def main():
     cmd.extend([
         "--hidden-import=streamlit",
         "--hidden-import=streamlit.web.bootstrap",
+        "--hidden-import=streamlit.runtime",
+        "--hidden-import=streamlit.runtime.scriptrunner",
         "--hidden-import=pandas",
         "--hidden-import=pygetwindow",
         "--hidden-import=openpyxl",
@@ -115,7 +136,8 @@ def main():
         "--hidden-import=tkinter.messagebox",
         "--hidden-import=tkinter.scrolledtext",
         "--hidden-import=threading",
-        "--hidden-import=subprocess"
+        "--hidden-import=subprocess",
+        "--hidden-import=time"
     ])
     
     # Windows 운영체제인 경우 추가 설정
@@ -124,7 +146,9 @@ def main():
             "--hidden-import=win32api",
             "--hidden-import=win32con",
             "--hidden-import=win32gui",
-            "--hidden-import=pywintypes"
+            "--hidden-import=pywintypes",
+            "--hidden-import=win32com",
+            "--hidden-import=pythoncom"
         ])
     
     # 명령 실행

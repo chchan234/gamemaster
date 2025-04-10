@@ -76,8 +76,26 @@ def main():
         # 먼저 필수 패키지 설치 여부 확인 및 설치
         print("필수 패키지 설치 확인 중...")
         
-        with open(os.path.join(current_dir, "requirements.txt"), "r") as req_file:
-            requirements = req_file.readlines()
+        try:
+            with open(os.path.join(current_dir, "requirements.txt"), "r", encoding="utf-8") as req_file:
+                requirements = req_file.readlines()
+        except UnicodeDecodeError:
+            # CP949 인코딩을 시도
+            with open(os.path.join(current_dir, "requirements.txt"), "r", encoding="cp949") as req_file:
+                requirements = req_file.readlines()
+        except Exception as e:
+            print(f"requirements.txt 파일 읽기 오류: {e}")
+            # 직접 패키지 목록 지정
+            requirements = [
+                "streamlit==1.32.0",
+                "pygetwindow==0.0.9",
+                "pandas==2.2.1",
+                "openpyxl==3.1.2", 
+                "PyAutoGUI==0.9.54",
+                "pillow==10.2.0",
+                "numpy==1.26.4",
+                "pyinstaller==6.5.0"
+            ]
         
         # 주석 제거 및 공백 제거
         packages = []

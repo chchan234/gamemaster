@@ -1,3 +1,26 @@
+# PyInstaller 환경에서의 임포트 에러 처리
+try:
+    import streamlit as st
+except ImportError as e:
+    # 패키징된 환경에서 실행 중인지 확인
+    if getattr(sys, 'frozen', False):
+        import sys
+        import os
+        import tkinter as tk
+        from tkinter import messagebox
+        
+        # 에러 출력
+        print(f"Streamlit 모듈 임포트 오류: {e}")
+        
+        # 기본 tkinter 메시지 출력
+        root = tk.Tk()
+        root.withdraw()  # 메인 창 숨기기
+        messagebox.showerror("오류", f"필요한 모듈을 찾을 수 없습니다: {e}\n\n'환경 설정' 버튼을 눌러 필요한 패키지를 설치하세요.")
+        sys.exit(1)
+    else:
+        # 일반 환경에서는 그대로 예외 발생
+        raise
+
 import streamlit as st
 import time
 import json

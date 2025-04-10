@@ -73,7 +73,22 @@ def main():
         "--collect-all=numpy",
         "--add-data", f"{os.path.join(current_dir, 'excel_data')}{os.pathsep}excel_data",
         "--add-data", f"{os.path.join(current_dir, 'templates')}{os.pathsep}templates",
+        "--add-binary", f"{os.path.join(current_dir, 'requirements.txt')}{os.pathsep}.",
     ]
+    
+    # Windows에서는 Python 사이트 패키지도 포함
+    if platform.system() == "Windows":
+        import site
+        site_packages = site.getsitepackages()[0]
+        cmd.extend([
+            "--add-binary", f"{os.path.join(site_packages, 'streamlit')}{os.pathsep}streamlit",
+            "--add-binary", f"{os.path.join(site_packages, 'pandas')}{os.pathsep}pandas",
+            "--add-binary", f"{os.path.join(site_packages, 'pygetwindow')}{os.pathsep}pygetwindow",
+            "--add-binary", f"{os.path.join(site_packages, 'openpyxl')}{os.pathsep}openpyxl",
+            "--add-binary", f"{os.path.join(site_packages, 'pyautogui')}{os.pathsep}pyautogui",
+            "--add-binary", f"{os.path.join(site_packages, 'PIL')}{os.pathsep}PIL",
+            "--add-binary", f"{os.path.join(site_packages, 'numpy')}{os.pathsep}numpy",
+        ])
     
     # 아이콘 추가
     if icon_path:
@@ -85,17 +100,32 @@ def main():
     # hidden imports 추가
     cmd.extend([
         "--hidden-import=streamlit",
+        "--hidden-import=streamlit.web.bootstrap",
         "--hidden-import=pandas",
         "--hidden-import=pygetwindow",
         "--hidden-import=openpyxl",
         "--hidden-import=pyautogui",
         "--hidden-import=pillow",
         "--hidden-import=PIL",
+        "--hidden-import=PIL._imagingtk",
+        "--hidden-import=PIL._tkinter_finder",
         "--hidden-import=numpy",
         "--hidden-import=tkinter",
+        "--hidden-import=tkinter.filedialog",
+        "--hidden-import=tkinter.messagebox",
+        "--hidden-import=tkinter.scrolledtext",
         "--hidden-import=threading",
         "--hidden-import=subprocess"
     ])
+    
+    # Windows 운영체제인 경우 추가 설정
+    if platform.system() == "Windows":
+        cmd.extend([
+            "--hidden-import=win32api",
+            "--hidden-import=win32con",
+            "--hidden-import=win32gui",
+            "--hidden-import=pywintypes"
+        ])
     
     # 명령 실행
     print(f"실행 명령어: {' '.join(cmd)}")
@@ -106,6 +136,25 @@ def main():
         # 추가 파일 복사
         print("추가 필요 파일 복사 중...")
         exe_dir = os.path.join(output_dir, "게임치트자동화")
+        
+        # Windows의 경우 venv 환경에서 필요한 DLL을 복사
+        if platform.system() == "Windows":
+            print("Windows 환경에 필요한 추가 라이브러리 복사 중...")
+            try:
+                import site
+                python_dir = os.path.dirname(sys.executable)
+                
+                # 필수 DLL 파일 복사
+                dll_files = ["python3.dll", "python39.dll", "python310.dll", "python311.dll", 
+                            "vcruntime140.dll", "vcruntime140_1.dll"]
+                
+                for dll in dll_files:
+                    dll_path = os.path.join(python_dir, dll)
+                    if os.path.exists(dll_path):
+                        shutil.copy2(dll_path, exe_dir)
+                        print(f"  - {dll} 복사됨")
+            except Exception as e:
+                print(f"DLL 파일 복사 중 오류 발생: {e}")
         
         files_to_copy = [
             "main.py",

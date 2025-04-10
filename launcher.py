@@ -151,6 +151,15 @@ class LauncherApp:
         self.update_status("환경 검사 중...")
         self.progress["value"] = 0
         
+        # PyInstaller로 패키징된 경우, 이미 모든 패키지가 번들링되어 있다고 가정
+        if getattr(sys, 'frozen', False):
+            self.update_log("패키징된 실행 파일입니다. 모든 필수 패키지가 포함되어 있습니다.")
+            self.update_status("모든 패키지가 설치되어 있습니다. 실행 가능합니다.")
+            self.run_button.config(state="normal")
+            self.missing_packages = []
+            self.progress["value"] = 100
+            return
+            
         required_packages = [
             "streamlit", "pygetwindow", "pandas", "openpyxl", 
             "pyautogui", "pillow", "numpy"
@@ -248,29 +257,53 @@ class LauncherApp:
                 else:
                     python_exe = sys.executable
                 
-                # Streamlit 실행
-                try:
-                    self.update_log(f"Python 경로: {python_exe}")
-                    process = subprocess.Popen(
-                        [python_exe, "-m", "streamlit", "run", main_script],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        universal_newlines=True
-                    )
-                except Exception as e:
-                    self.update_log(f"Streamlit 실행 오류: {str(e)}")
-                    # 백업 방법: 직접 Python 스크립트 실행
+                # Streamlit 실행 - PyInstaller 패키징 환경에 맞게 최적화
+                if getattr(sys, 'frozen', False):
                     try:
-                        self.update_log("대체 방법으로 직접 실행 시도...")
+                        # 패키지 경로 설정
+                        streamlit_dir = os.path.join(self.script_dir, "streamlit")
+                        
+                        # 환경 변수 설정 - Streamlit이 필요한 리소스 찾을 수 있도록
+                        env = os.environ.copy()
+                        env["PYTHONPATH"] = self.script_dir
+                        
+                        self.update_log("패키징된 모드에서 직접 실행 시도...")
+                        # 직접 main.py 실행 시도
                         process = subprocess.Popen(
                             [python_exe, main_script],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
+                            universal_newlines=True,
+                            env=env
+                        )
+                    except Exception as e:
+                        self.update_log(f"실행 오류: {str(e)}")
+                        messagebox.showerror("오류", f"프로그램 실행 중 오류가 발생했습니다: {str(e)}")
+                        raise
+                else:
+                    # 일반 Python 환경에서는 기존 방식대로 Streamlit 실행
+                    try:
+                        self.update_log(f"Python 경로: {python_exe}")
+                        process = subprocess.Popen(
+                            [python_exe, "-m", "streamlit", "run", main_script],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
                             universal_newlines=True
                         )
-                    except Exception as e2:
-                        self.update_log(f"대체 실행 방법도 실패: {str(e2)}")
-                        raise
+                    except Exception as e:
+                        self.update_log(f"Streamlit 실행 오류: {str(e)}")
+                        # 백업 방법: 직접 Python 스크립트 실행
+                        try:
+                            self.update_log("대체 방법으로 직접 실행 시도...")
+                            process = subprocess.Popen(
+                                [python_exe, main_script],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True
+                            )
+                        except Exception as e2:
+                            self.update_log(f"대체 실행 방법도 실패: {str(e2)}")
+                            raise
                 
                 # 초기 출력 몇 줄 읽기
                 for _ in range(10):
